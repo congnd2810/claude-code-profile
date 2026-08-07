@@ -1,0 +1,13 @@
+{
+  "name": "ccp",
+  "version": "0.1.0",
+  "description": "Switch Claude Code / Codex between subscription accounts, Anthropic API keys and third-party providers",
+  "type": "module",
+  "bin": {
+    "ccp": "src/ccp.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}
