@@ -5,7 +5,7 @@ import { BACKUP_DIR, CcpError, ask, c, confirm, fail, fmtAge, info, ok, readJson
 import * as store from './store.mjs'
 import * as claude from './claude.mjs'
 import * as codex from './codex.mjs'
-import { ACCOUNT, CLAUDE_SERVICE, readSecret, vaultDelete, vaultRead, vaultWrite, writeSecret } from './keychain.mjs'
+import { ACCOUNT, CLAUDE_SERVICE, deleteSecret, readSecret, vaultDelete, vaultRead, vaultWrite, writeSecret } from './keychain.mjs'
 import { check } from './check.mjs'
 import { menu } from './tui.mjs'
 
@@ -172,6 +172,8 @@ function cmdDoctor(state) {
     else fail('keychain ghi duoc nhung doc lai sai')
   } catch (e) {
     fail(`keychain loi: ${e.message}`)
+  } finally {
+    deleteSecret(selfService)
   }
 
   const activeClaude = state.active.claude

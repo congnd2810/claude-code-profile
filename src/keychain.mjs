@@ -23,7 +23,14 @@ export const ACCOUNT = os.userInfo().username
  * home directory — otherwise a shell with HOME pointed elsewhere makes macOS
  * pop a "keychain cannot be found" dialog instead of reading the vault.
  */
-const SEC_ENV = { env: { ...process.env, HOME: os.userInfo().homedir } }
+// stdin is closed and a timeout is set on purpose: `security` reads a missing
+// -w value straight from /dev/tty, which would hang the CLI waiting on a
+// "password data for new item:" prompt nobody asked for.
+const SEC_ENV = {
+  env: { ...process.env, HOME: os.userInfo().homedir },
+  stdio: ['ignore', 'pipe', 'pipe'],
+  timeout: 15_000,
+}
 
 export function readSecret(service, account = ACCOUNT) {
   const r = run('security', ['find-generic-password', '-s', service, '-a', account, '-w'], SEC_ENV)
@@ -43,27 +50,22 @@ export function deleteSecret(service, account = ACCOUNT) {
 export function writeSecret(service, secret, account = ACCOUNT) {
   const label = `${service} (${account})`
 
-  const viaStdin = () =>
-    run('security', ['add-generic-password', '-U', '-s', service, '-a', account, '-D', 'ccp', '-w'], {
-      ...SEC_ENV,
-      input: `${secret}\n${secret}\n`,
-    })
-  const viaArgv = () =>
+  // The secret goes through argv, so it is briefly visible to `ps` on this
+  // machine. The alternative (-w with no value) makes security prompt on the
+  // tty instead of reading stdin, so there is no stdin path to use.
+  const write = () =>
     run('security', ['add-generic-password', '-U', '-s', service, '-a', account, '-D', 'ccp', '-w', secret], SEC_ENV)
 
-  const attempts = [viaStdin, viaArgv]
-  let lastErr = ''
-  for (const attempt of attempts) {
-    attempt()
-    if (readSecret(service, account) === secret) return
-  }
-  // Existing item may have an ACL that blocks -U. Recreate it.
-  deleteSecret(service, account)
-  const r = viaArgv()
-  lastErr = r.err || r.out
+  let r = write()
   if (readSecret(service, account) === secret) return
 
-  throw new CcpError(`khong ghi duoc keychain ${label}${lastErr ? `: ${lastErr}` : ''}`)
+  // An item created by another app may have an ACL that blocks -U. Recreate it.
+  deleteSecret(service, account)
+  r = write()
+  if (readSecret(service, account) === secret) return
+
+  const why = r.err || r.out
+  throw new CcpError(`khong ghi duoc keychain ${label}${why ? `: ${why}` : ''}`)
 }
 
 export function vaultRead(profileName) {
