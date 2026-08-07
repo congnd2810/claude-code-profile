@@ -7,7 +7,7 @@ import * as claude from './claude.mjs'
 import * as codex from './codex.mjs'
 import { ACCOUNT, CLAUDE_SERVICE, deleteSecret, readSecret, vaultDelete, vaultRead, vaultWrite, writeSecret } from './keychain.mjs'
 import { check } from './check.mjs'
-import { menu } from './tui.mjs'
+import { menu, select } from './tui.mjs'
 
 const mod = (target) => (target === 'claude' ? claude : codex)
 
@@ -61,16 +61,56 @@ async function cmdCapture(state, name) {
   store.save(state)
 }
 
+/** Ask the provider what it serves so the model can be picked, not typed. */
+async function pickModel(baseUrl, key, fallback) {
+  const ctl = new AbortController()
+  const t = setTimeout(() => ctl.abort(), 15_000)
+  let ids = []
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/v1$/, '')}/v1/models`, {
+      headers: { authorization: `Bearer ${key}` },
+      signal: ctl.signal,
+    })
+    if (res.ok) ids = (JSON.parse(await res.text()).data ?? []).map((m) => m.id).filter(Boolean)
+  } catch {
+    /* provider offline or no /v1/models — fall back to typing */
+  } finally {
+    clearTimeout(t)
+  }
+  if (!ids.length) {
+    info('khong lay duoc danh sach model tu provider — nhap tay')
+    return (await ask(`  Model${fallback ? ` (${fallback})` : ''}: `)) || fallback
+  }
+  const picked = await select('Model:', [
+    ...ids.map((id) => ({ label: id, value: id, default: id === fallback })),
+    { label: 'tu go...', value: null, hint: 'model khong co trong danh sach' },
+  ])
+  if (picked) return picked
+  warn('danh sach /v1/models cua provider khong luon day du — go ten model bat ky')
+  return (await ask(`  Model${fallback ? ` (${fallback})` : ''}: `)) || fallback
+}
+
 async function cmdAdd(state) {
   console.log(`\n  ${c.bold('Them profile')}\n`)
-  const target = (await ask('  Cho cong cu nao? [claude/codex] (claude): ')) || 'claude'
-  if (!['claude', 'codex'].includes(target)) throw new CcpError('chi nhan claude hoac codex')
+  const target = await select('Cho cong cu nao?', [
+    { label: 'claude', value: 'claude', hint: 'Claude Code', default: true },
+    { label: 'codex', value: 'codex', hint: 'Codex' },
+  ])
+  if (!target) return
 
-  const kinds = store.KINDS[target]
-  const kindHint = target === 'claude' ? 'oauth = login goc, proxy = ben thu 3, apikey = key Anthropic' : 'chatgpt = login goc, provider = ben thu 3'
-  console.log(`  ${c.dim(kindHint)}`)
-  const kind = (await ask(`  Loai? [${kinds.join('/')}] (${kinds[0]}): `)) || kinds[0]
-  if (!kinds.includes(kind)) throw new CcpError(`loai khong hop le cho ${target}`)
+  const kindItems =
+    target === 'claude'
+      ? [
+          { label: 'oauth', value: 'oauth', hint: 'account Claude goc (Pro/Max/Team)', default: true },
+          { label: 'proxy', value: 'proxy', hint: 'provider ben thu 3' },
+          { label: 'apikey', value: 'apikey', hint: 'key tu console.anthropic.com' },
+        ]
+      : [
+          { label: 'chatgpt', value: 'chatgpt', hint: 'login ChatGPT goc', default: true },
+          { label: 'provider', value: 'provider', hint: 'provider ben thu 3' },
+        ]
+  const kind = await select('Loai?', kindItems)
+  if (!kind) return
 
   const name = await ask('  Ten profile (vd work-max, tuongtacfree): ')
   if (!name) throw new CcpError('phai co ten')
@@ -93,9 +133,10 @@ async function cmdAdd(state) {
   } else if (kind === 'proxy') {
     const baseUrl = (await ask('  Base URL (khong co /v1, vd https://api.tuongtacfree.vn): ')).replace(/\/+$/, '')
     if (!baseUrl) throw new CcpError('phai co base URL')
-    const model = (await ask('  Model (claude-opus-5): ')) || 'claude-opus-5'
     const key = await ask('  API key: ', { silent: true })
     if (!key) throw new CcpError('phai co key')
+    const model = await pickModel(baseUrl, key, 'claude-opus-5')
+    if (!model) throw new CcpError('phai co model')
     vaultWrite(name, key)
     profile = { target, kind, label: null, baseUrl, model, capturedAt: Date.now() }
   } else {
@@ -104,12 +145,19 @@ async function cmdAdd(state) {
     const providerName = (await ask(`  Ten hien thi (${providerId}): `)) || providerId
     const baseUrl = (await ask('  Base URL (co /v1, vd https://api.tuongtacfree.vn/v1): ')).replace(/\/+$/, '')
     if (!baseUrl) throw new CcpError('phai co base URL')
-    const wireApi = (await ask('  wire_api [responses/chat] (responses): ')) || 'responses'
-    const model = await ask('  Model (vd gpt-5.6-sol): ')
-    if (!model) throw new CcpError('phai co model')
+    const wireApi = await select('wire_api?', [
+      { label: 'responses', value: 'responses', hint: 'ban Codex moi chi ho tro cai nay', default: true },
+      { label: 'chat', value: 'chat', hint: 'ban Codex cu' },
+    ])
+    if (!wireApi) return
     const key = await ask('  API key: ', { silent: true })
     if (!key) throw new CcpError('phai co key')
-    const dropTier = await confirm('  Bo service_tier + model_reasoning_effort? (proxy thuong khong ho tro)')
+    const model = await pickModel(baseUrl, key, null)
+    if (!model) throw new CcpError('phai co model')
+    const dropTier = await select('Bo service_tier + model_reasoning_effort?', [
+      { label: 'co', value: true, hint: 'provider ben thu 3 thuong khong ho tro', default: true },
+      { label: 'khong', value: false, hint: 'giu nguyen trong config.toml' },
+    ])
     vaultWrite(name, key)
     profile = {
       target,

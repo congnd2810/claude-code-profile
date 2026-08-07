@@ -7,6 +7,58 @@ const ESC = String.fromCharCode(27)
 const CTRL_C = String.fromCharCode(3)
 const HINT = c.dim('↑↓ chon · enter activate · [c]apture · [a]dd · [d]elete · [t]est · [q]uit')
 
+/**
+ * Inline arrow-key picker. Draws in place (no screen clear) so the answers
+ * already given stay visible above it. Resolves to the chosen value, or null
+ * if the user escapes out.
+ */
+export function select(title, items) {
+  return new Promise((resolve) => {
+    const stdin = process.stdin
+    if (!stdin.isTTY) return resolve((items.find((it) => it.default) ?? items[0])?.value ?? null)
+
+    let cur = Math.max(0, items.findIndex((it) => it.default))
+    process.stdout.write(`  ${title}\n`)
+
+    const draw = (first) => {
+      if (!first) process.stdout.write(`${ESC}[${items.length}A`)
+      for (const [i, it] of items.entries()) {
+        const mark = i === cur ? c.cyan('❯') : ' '
+        const label = i === cur ? c.bold(it.label) : it.label
+        const hint = it.hint ? c.dim(`  ${it.hint}`) : ''
+        process.stdout.write(`${ESC}[2K   ${mark} ${label}${hint}\n`)
+      }
+    }
+
+    const wasRaw = stdin.isRaw
+    stdin.setRawMode(true)
+    stdin.resume()
+    stdin.setEncoding('utf8')
+
+    const done = (value, label) => {
+      stdin.removeListener('data', onData)
+      stdin.setRawMode(wasRaw ?? false)
+      stdin.pause()
+      // Collapse the list into a single answered line.
+      process.stdout.write(`${ESC}[${items.length + 1}A${ESC}[0J`)
+      process.stdout.write(`  ${title} ${label ? c.green(label) : c.dim('(bo qua)')}\n`)
+      resolve(value)
+    }
+
+    const onData = (key) => {
+      if (key === CTRL_C || key === ESC || key === 'q') return done(null, null)
+      if (key === `${ESC}[A` || key === 'k') cur = (cur - 1 + items.length) % items.length
+      else if (key === `${ESC}[B` || key === 'j') cur = (cur + 1) % items.length
+      else if (key === '\r' || key === '\n') return done(items[cur].value, items[cur].label)
+      else return
+      draw(false)
+    }
+
+    draw(true)
+    stdin.on('data', onData)
+  })
+}
+
 function rows(state) {
   const out = []
   for (const target of ['claude', 'codex']) {

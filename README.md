@@ -69,7 +69,7 @@ ccp use work-max
 | kind | Là gì | `ccp add` hỏi gì |
 |---|---|---|
 | `oauth` | Account Claude gốc (Pro/Max/Team) | chỉ tên — nó tự đọc login hiện tại |
-| `proxy` | Provider bên thứ 3 | base URL (không có `/v1`), model, API key |
+| `proxy` | Provider bên thứ 3 | base URL (không có `/v1`), API key, rồi **chọn** model |
 | `apikey` | API key từ console.anthropic.com | API key |
 
 **Codex**
@@ -77,7 +77,11 @@ ccp use work-max
 | kind | Là gì | `ccp add` hỏi gì |
 |---|---|---|
 | `chatgpt` | Login ChatGPT gốc | chỉ tên — nó tự đọc `auth.json` hiện tại |
-| `provider` | Provider bên thứ 3 | provider id, base URL (**có** `/v1`), `wire_api`, model, key, có bỏ `service_tier` không |
+| `provider` | Provider bên thứ 3 | provider id, base URL (**có** `/v1`), `wire_api`, key, rồi **chọn** model |
+
+Câu nào có lựa chọn hữu hạn thì chọn bằng `↑↓` + `enter`, không phải gõ. Chỉ tên profile, base URL và key là phải nhập.
+
+Riêng model: sau khi có base URL và key, `ccp` gọi `/v1/models` của provider rồi cho bạn chọn từ danh sách thật. Luôn có mục **tự gõ** vì danh sách đó không phải lúc nào cũng đầy đủ — provider có thể serve model mà nó không liệt kê.
 
 Hai chỗ dễ nhầm:
 
