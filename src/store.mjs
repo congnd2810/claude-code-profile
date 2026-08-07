@@ -31,7 +31,7 @@ export function save(state) {
 
 export function get(state, name) {
   const p = state.profiles[name]
-  if (!p) throw new CcpError(`khong co profile "${name}" — chay \`ccp list\` de xem`)
+  if (!p) throw new CcpError(`no profile named "${name}" — run \`ccp list\` to see them`)
   return p
 }
 
@@ -47,9 +47,9 @@ export function isActive(state, name) {
 }
 
 export function put(state, name, profile) {
-  if (!/^[a-zA-Z0-9._-]+$/.test(name)) throw new CcpError('ten profile chi dung chu, so, . _ -')
+  if (!/^[a-zA-Z0-9._-]+$/.test(name)) throw new CcpError('profile name may only contain letters, digits, . _ -')
   if (!KINDS[profile.target]?.includes(profile.kind)) {
-    throw new CcpError(`kind "${profile.kind}" khong hop le cho ${profile.target}`)
+    throw new CcpError(`kind "${profile.kind}" is not valid for ${profile.target}`)
   }
   state.profiles[name] = profile
 }

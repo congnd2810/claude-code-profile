@@ -37,20 +37,20 @@ export async function check(state, name) {
 
   if (p.kind === 'oauth' || p.kind === 'chatgpt') {
     const blob = vaultRead(name)
-    if (!blob) return fail('chua co token trong vault')
+    if (!blob) return fail('no token in the vault')
     const exp = peekExpiry(blob)
     if (exp) {
       const left = exp - Date.now()
-      if (left <= 0) warn(`token het han ${fmtAge(exp)} → can \`claude\` + \`/login\` lai nick nay`)
-      else ok(`token con han (${Math.round(left / 3600000)}h nua)`)
+      if (left <= 0) warn(`token expired ${fmtAge(exp)} → run \`claude\` + \`/login\` for this account`)
+      else ok(`token still valid (${Math.round(left / 3600000)}h left)`)
     } else {
-      info('co token trong vault (khong doc duoc han su dung)')
+      info('token present in the vault (expiry not readable)')
     }
-    return info('login dang OAuth — khong test bang HTTP duoc, cu activate roi mo app')
+    return info('OAuth login — cannot be probed over HTTP, just activate it and open the app')
   }
 
   const secret = vaultRead(name)
-  if (!secret) return fail('chua co key trong vault')
+  if (!secret) return fail('no key in the vault')
 
   if (p.target === 'claude') {
     const base = (p.baseUrl ?? 'https://api.anthropic.com').replace(/\/+$/, '')
@@ -60,8 +60,8 @@ export async function check(state, name) {
       { 'x-api-key': secret, 'anthropic-version': '2023-06-01' },
       { model, max_tokens: 16, messages: [{ role: 'user', content: 'say pong' }] },
     )
-    if (r.status === 200 && /"type"\s*:\s*"text"/.test(r.text)) return ok(`${base}/v1/messages · ${model} → tra loi duoc`)
-    return fail(`${base}/v1/messages · ${model} → http=${r.status || 'loi mang'} · ${firstError(r.text)}`)
+    if (r.status === 200 && /"type"\s*:\s*"text"/.test(r.text)) return ok(`${base}/v1/messages · ${model} → replied`)
+    return fail(`${base}/v1/messages · ${model} → http=${r.status || 'network error'} · ${firstError(r.text)}`)
   }
 
   // codex provider — mirror what Codex actually sends (streaming responses API)
@@ -81,5 +81,5 @@ export async function check(state, name) {
   if (r.text.includes('response.failed') || r.status !== 200) {
     return fail(`${base}/responses · ${p.model} → ${firstError(r.text)}`)
   }
-  return warn(`${base}/responses · ${p.model} → tra ve la: ${r.text.slice(0, 120)}`)
+  return warn(`${base}/responses · ${p.model} → unexpected response: ${r.text.slice(0, 120)}`)
 }

@@ -1,5 +1,5 @@
 // Round 3: `ccp check` against the live provider + CLI smoke test.
-// Expectation (matches today's curl findings): claude/messages OK,
+// Expectation (matches the curl findings): claude/messages OK,
 // codex/responses fails with "No available accounts".
 import { spawnSync } from 'node:child_process'
 

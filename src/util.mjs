@@ -50,7 +50,7 @@ export function readJson(file, fallback = null) {
   try {
     return JSON.parse(raw)
   } catch {
-    throw new CcpError(`${file} khong phai JSON hop le — sua tay hoac xoa file roi thu lai`)
+    throw new CcpError(`${file} is not valid JSON — fix or delete it, then try again`)
   }
 }
 
@@ -90,14 +90,14 @@ export function stampNow() {
 }
 
 export function fmtAge(ms) {
-  if (!ms) return 'chua ro'
+  if (!ms) return 'unknown'
   const s = Math.max(0, Math.floor((Date.now() - ms) / 1000))
-  if (s < 90) return `${s}s truoc`
+  if (s < 90) return `${s}s ago`
   const m = Math.floor(s / 60)
-  if (m < 90) return `${m}m truoc`
+  if (m < 90) return `${m}m ago`
   const h = Math.floor(m / 60)
-  if (h < 48) return `${h}h truoc`
-  return `${Math.floor(h / 24)}d truoc`
+  if (h < 48) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
 }
 
 /** Simple line prompt on stdin. Returns '' when the user just hits enter. */

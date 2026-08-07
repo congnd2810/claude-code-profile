@@ -65,7 +65,7 @@ export function writeSecret(service, secret, account = ACCOUNT) {
   if (readSecret(service, account) === secret) return
 
   const why = r.err || r.out
-  throw new CcpError(`khong ghi duoc keychain ${label}${why ? `: ${why}` : ''}`)
+  throw new CcpError(`could not write keychain item ${label}${why ? `: ${why}` : ''}`)
 }
 
 export function vaultRead(profileName) {

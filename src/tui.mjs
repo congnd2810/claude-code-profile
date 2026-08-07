@@ -5,7 +5,7 @@ import * as codex from './codex.mjs'
 
 const ESC = String.fromCharCode(27)
 const CTRL_C = String.fromCharCode(3)
-const HINT = c.dim('↑↓ chon · enter activate · [c]apture · [a]dd · [d]elete · [t]est · [q]uit')
+const HINT = c.dim('↑↓ move · enter activate · [c]apture · [a]dd · [d]elete · [t]est · [q]uit')
 
 /**
  * Inline arrow-key picker. Draws in place (no screen clear) so the answers
@@ -41,7 +41,7 @@ export function select(title, items) {
       stdin.pause()
       // Collapse the list into a single answered line.
       process.stdout.write(`${ESC}[${items.length + 1}A${ESC}[0J`)
-      process.stdout.write(`  ${title} ${label ? c.green(label) : c.dim('(bo qua)')}\n`)
+      process.stdout.write(`  ${title} ${label ? c.green(label) : c.dim('(cancelled)')}\n`)
       resolve(value)
     }
 
@@ -79,7 +79,7 @@ function render(state, list, cursor) {
       return
     }
     if (row.empty) {
-      lines.push(`     ${c.dim('(chua co profile — bam [a] de them)')}`)
+      lines.push(`     ${c.dim('(no profiles yet — press [a] to add one)')}`)
       return
     }
     const p = state.profiles[row.name]

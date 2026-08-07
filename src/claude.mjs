@@ -53,7 +53,7 @@ export function captureActive(state, { quiet = false } = {}) {
 
   const blob = liveBlob()
   if (!blob) {
-    if (!quiet) warn(`khong doc duoc token hien tai — bo qua capture cho "${name}"`)
+    if (!quiet) warn(`could not read the current token — skipping capture for "${name}"`)
     return false
   }
   if (blob === vaultRead(name)) return false // unchanged, nothing to do
@@ -65,7 +65,7 @@ export function captureActive(state, { quiet = false } = {}) {
   const m = liveModel()
   if (m) p.model = m
   p.capturedAt = Date.now()
-  if (!quiet) ok(`captured token moi cua "${name}" vao vault`)
+  if (!quiet) ok(`captured the refreshed token for "${name}"`)
   return true
 }
 
@@ -75,12 +75,12 @@ export function envFor(state, name) {
   const env = {}
   if (p.kind === 'proxy') {
     const token = vaultRead(name)
-    if (!token) throw new CcpError(`profile "${name}" chua co key trong vault — chay \`ccp add\` lai`)
+    if (!token) throw new CcpError(`profile "${name}" has no key in the vault — run \`ccp add\` again`)
     env.ANTHROPIC_BASE_URL = p.baseUrl
     env.ANTHROPIC_AUTH_TOKEN = token
   } else if (p.kind === 'apikey') {
     const key = vaultRead(name)
-    if (!key) throw new CcpError(`profile "${name}" chua co key trong vault — chay \`ccp add\` lai`)
+    if (!key) throw new CcpError(`profile "${name}" has no key in the vault — run \`ccp add\` again`)
     env.ANTHROPIC_API_KEY = key
   }
   Object.assign(env, p.env ?? {})
@@ -89,7 +89,7 @@ export function envFor(state, name) {
 
 export function apply(state, name, stamp) {
   const p = get(state, name)
-  if (p.target !== 'claude') throw new CcpError(`"${name}" la profile ${p.target}, khong phai claude`)
+  if (p.target !== 'claude') throw new CcpError(`"${name}" is a ${p.target} profile, not claude`)
 
   captureActive(state)
 
@@ -113,21 +113,21 @@ export function apply(state, name, stamp) {
     const blob = vaultRead(name)
     if (!blob) {
       throw new CcpError(
-        `profile "${name}" chua co token trong vault.\n` +
-          `    Chay \`claude\` roi \`/login\` bang nick do, sau do \`ccp capture ${name}\`.`,
+        `profile "${name}" has no token in the vault.\n` +
+          `    Run \`claude\`, \`/login\` with that account, then \`ccp capture ${name}\`.`,
       )
     }
     writeSecret(CLAUDE_SERVICE, blob)
-    ok(`restored token oauth cho "${name}"`)
+    ok(`restored the oauth token for "${name}"`)
 
     if (p.identity || p.userID) {
       const j = readJson(CLAUDE_JSON, {})
       if (p.identity) j.oauthAccount = p.identity
       if (p.userID) j.userID = p.userID
       writeJsonAtomic(CLAUDE_JSON, j)
-      ok(`set identity: ${p.identity?.emailAddress ?? '(khong ro email)'}`)
+      ok(`identity set to ${p.identity?.emailAddress ?? '(email unknown)'}`)
     } else {
-      warn('profile khong luu identity — Claude Code co the hien sai account, chay `ccp capture` sau khi vao')
+      warn('profile stores no identity — Claude Code may show the wrong account; run `ccp capture` once inside')
     }
   }
 
@@ -138,7 +138,7 @@ export function apply(state, name, stamp) {
   if (Object.keys(wanted).length) {
     ok(`settings.json: set ${Object.keys(wanted).join(', ')}`)
   } else {
-    ok('settings.json: da xoa het env ANTHROPIC_* (dung login goc)')
+    ok('settings.json: cleared all ANTHROPIC_* env (using the native login)')
   }
   if (p.model) info(`model: ${p.model}`)
 }
@@ -148,8 +148,8 @@ export function captureInto(state, name, { label } = {}) {
   const blob = liveBlob()
   if (!blob) {
     throw new CcpError(
-      'khong doc duoc keychain "Claude Code-credentials".\n' +
-        '    Nghia la chua login bang subscription. Chay `claude` roi `/login` truoc.',
+      'could not read keychain item "Claude Code-credentials".\n' +
+        '    That means no subscription login is present. Run `claude`, then `/login` first.',
     )
   }
   const id = liveIdentity()
@@ -169,11 +169,11 @@ export function captureInto(state, name, { label } = {}) {
 export function describe(state, name) {
   const p = get(state, name)
   if (p.kind === 'oauth') {
-    const email = p.identity?.emailAddress ?? '(chua capture)'
+    const email = p.identity?.emailAddress ?? '(not captured yet)'
     const org = p.identity?.organizationName
     const tier = p.identity?.userRateLimitTier
     return [email, org, tier].filter(Boolean).join(' · ')
   }
-  if (p.kind === 'proxy') return `${p.baseUrl} → ${p.model ?? '(model mac dinh)'}`
+  if (p.kind === 'proxy') return `${p.baseUrl} → ${p.model ?? '(default model)'}`
   return 'ANTHROPIC_API_KEY'
 }

@@ -17,7 +17,7 @@ function cmdList(state) {
     const names = store.names(state, target)
     console.log(`\n  ${c.bold(target === 'claude' ? 'Claude Code' : 'Codex')}`)
     if (!names.length) {
-      console.log(`     ${c.dim('(chua co profile)')}`)
+      console.log(`     ${c.dim('(no profiles)')}`)
       continue
     }
     for (const name of names) {
@@ -34,29 +34,29 @@ function cmdList(state) {
 }
 
 async function cmdUse(state, name) {
-  if (!name) throw new CcpError('thieu ten profile: `ccp use <name>`')
+  if (!name) throw new CcpError('missing profile name: `ccp use <name>`')
   const p = store.get(state, name)
   const stamp = stampNow()
   mod(p.target).apply(state, name, stamp)
   store.save(state)
   info(`backup: ${path.join(BACKUP_DIR, stamp)}`)
-  warn(`restart ${p.target === 'claude' ? 'Claude Code' : 'Codex'} de ap dung (phien dang mo khong doi)`)
+  warn(`restart ${p.target === 'claude' ? 'Claude Code' : 'Codex'} to pick this up (running sessions keep the old one)`)
 }
 
 async function cmdCapture(state, name) {
   const target = name ? store.get(state, name).target : 'claude'
   if (name) {
     const p = store.get(state, name)
-    if (p.kind !== 'oauth' && p.kind !== 'chatgpt') throw new CcpError(`"${name}" khong phai profile login, khong capture`)
+    if (p.kind !== 'oauth' && p.kind !== 'chatgpt') throw new CcpError(`"${name}" is not a login profile, nothing to capture`)
     const wasActive = state.active[target]
     state.active[target] = name
     const changed = mod(target).captureActive(state)
     state.active[target] = wasActive
-    if (!changed) info('token khong doi — vault da moi nhat')
+    if (!changed) info('token unchanged — the vault is already current')
   } else {
     let n = 0
     for (const t of ['claude', 'codex']) if (mod(t).captureActive(state)) n++
-    if (!n) info('khong co gi de capture (token khong doi hoac profile active khong phai login)')
+    if (!n) info('nothing to capture (token unchanged, or the active profile is not a login)')
   }
   store.save(state)
 }
@@ -78,21 +78,21 @@ async function pickModel(baseUrl, key, fallback) {
     clearTimeout(t)
   }
   if (!ids.length) {
-    info('khong lay duoc danh sach model tu provider — nhap tay')
+    info('could not fetch the model list from this provider — type it instead')
     return (await ask(`  Model${fallback ? ` (${fallback})` : ''}: `)) || fallback
   }
   const picked = await select('Model:', [
     ...ids.map((id) => ({ label: id, value: id, default: id === fallback })),
-    { label: 'tu go...', value: null, hint: 'model khong co trong danh sach' },
+    { label: 'type it myself...', value: null, hint: 'model not in this list' },
   ])
   if (picked) return picked
-  warn('danh sach /v1/models cua provider khong luon day du — go ten model bat ky')
+  warn('a provider\'s /v1/models is not always complete — any model name is allowed')
   return (await ask(`  Model${fallback ? ` (${fallback})` : ''}: `)) || fallback
 }
 
 async function cmdAdd(state) {
-  console.log(`\n  ${c.bold('Them profile')}\n`)
-  const target = await select('Cho cong cu nao?', [
+  console.log(`\n  ${c.bold('Add a profile')}\n`)
+  const target = await select('Which tool?', [
     { label: 'claude', value: 'claude', hint: 'Claude Code', default: true },
     { label: 'codex', value: 'codex', hint: 'Codex' },
   ])
@@ -101,62 +101,62 @@ async function cmdAdd(state) {
   const kindItems =
     target === 'claude'
       ? [
-          { label: 'oauth', value: 'oauth', hint: 'account Claude goc (Pro/Max/Team)', default: true },
-          { label: 'proxy', value: 'proxy', hint: 'provider ben thu 3' },
-          { label: 'apikey', value: 'apikey', hint: 'key tu console.anthropic.com' },
+          { label: 'oauth', value: 'oauth', hint: 'native Claude account (Pro/Max/Team)', default: true },
+          { label: 'proxy', value: 'proxy', hint: 'third-party provider' },
+          { label: 'apikey', value: 'apikey', hint: 'key from console.anthropic.com' },
         ]
       : [
-          { label: 'chatgpt', value: 'chatgpt', hint: 'login ChatGPT goc', default: true },
-          { label: 'provider', value: 'provider', hint: 'provider ben thu 3' },
+          { label: 'chatgpt', value: 'chatgpt', hint: 'native ChatGPT login', default: true },
+          { label: 'provider', value: 'provider', hint: 'third-party provider' },
         ]
-  const kind = await select('Loai?', kindItems)
+  const kind = await select('Kind?', kindItems)
   if (!kind) return
 
-  const name = await ask('  Ten profile (vd work-max, tuongtacfree): ')
-  if (!name) throw new CcpError('phai co ten')
-  if (state.profiles[name] && !(await confirm(`  Profile "${name}" da co, ghi de?`))) return
+  const name = await ask('  Profile name (e.g. work-max, tuongtacfree): ')
+  if (!name) throw new CcpError('a name is required')
+  if (state.profiles[name] && !(await confirm(`  Profile "${name}" exists, overwrite?`))) return
 
   let profile
   if (kind === 'oauth') {
-    console.log(`  ${c.dim('Se luu login Claude Code dang dung hien tai vao vault.')}`)
+    console.log(`  ${c.dim('Saves the Claude Code login currently in use into the vault.')}`)
     profile = claude.captureInto(state, name)
-    ok(`captured: ${profile.identity?.emailAddress ?? '(khong doc duoc email)'}`)
+    ok(`captured: ${profile.identity?.emailAddress ?? '(email not readable)'}`)
   } else if (kind === 'chatgpt') {
-    console.log(`  ${c.dim('Se luu ~/.codex/auth.json dang dung hien tai vao vault.')}`)
+    console.log(`  ${c.dim('Saves the ~/.codex/auth.json currently in use into the vault.')}`)
     profile = codex.captureInto(state, name)
     ok('captured auth.json')
   } else if (kind === 'apikey') {
     const key = await ask('  ANTHROPIC_API_KEY: ', { silent: true })
-    if (!key) throw new CcpError('phai co key')
+    if (!key) throw new CcpError('a key is required')
     vaultWrite(name, key)
     profile = { target, kind, label: null, model: null, capturedAt: Date.now() }
   } else if (kind === 'proxy') {
-    const baseUrl = (await ask('  Base URL (khong co /v1, vd https://api.tuongtacfree.vn): ')).replace(/\/+$/, '')
-    if (!baseUrl) throw new CcpError('phai co base URL')
+    const baseUrl = (await ask('  Base URL (no /v1, e.g. https://api.tuongtacfree.vn): ')).replace(/\/+$/, '')
+    if (!baseUrl) throw new CcpError('a base URL is required')
     const key = await ask('  API key: ', { silent: true })
-    if (!key) throw new CcpError('phai co key')
+    if (!key) throw new CcpError('a key is required')
     const model = await pickModel(baseUrl, key, 'claude-opus-5')
-    if (!model) throw new CcpError('phai co model')
+    if (!model) throw new CcpError('a model is required')
     vaultWrite(name, key)
     profile = { target, kind, label: null, baseUrl, model, capturedAt: Date.now() }
   } else {
-    const providerId = (await ask('  Provider id (vd tuongtacfree): ')).trim()
-    if (!/^[a-zA-Z0-9_-]+$/.test(providerId)) throw new CcpError('provider id chi dung chu, so, _ -')
-    const providerName = (await ask(`  Ten hien thi (${providerId}): `)) || providerId
-    const baseUrl = (await ask('  Base URL (co /v1, vd https://api.tuongtacfree.vn/v1): ')).replace(/\/+$/, '')
-    if (!baseUrl) throw new CcpError('phai co base URL')
+    const providerId = (await ask('  Provider id (e.g. tuongtacfree): ')).trim()
+    if (!/^[a-zA-Z0-9_-]+$/.test(providerId)) throw new CcpError('provider id may only contain letters, digits, _ -')
+    const providerName = (await ask(`  Display name (${providerId}): `)) || providerId
+    const baseUrl = (await ask('  Base URL (with /v1, e.g. https://api.tuongtacfree.vn/v1): ')).replace(/\/+$/, '')
+    if (!baseUrl) throw new CcpError('a base URL is required')
     const wireApi = await select('wire_api?', [
-      { label: 'responses', value: 'responses', hint: 'ban Codex moi chi ho tro cai nay', default: true },
-      { label: 'chat', value: 'chat', hint: 'ban Codex cu' },
+      { label: 'responses', value: 'responses', hint: 'the only one recent Codex supports', default: true },
+      { label: 'chat', value: 'chat', hint: 'older Codex builds' },
     ])
     if (!wireApi) return
     const key = await ask('  API key: ', { silent: true })
-    if (!key) throw new CcpError('phai co key')
+    if (!key) throw new CcpError('a key is required')
     const model = await pickModel(baseUrl, key, null)
-    if (!model) throw new CcpError('phai co model')
-    const dropTier = await select('Bo service_tier + model_reasoning_effort?', [
-      { label: 'co', value: true, hint: 'provider ben thu 3 thuong khong ho tro', default: true },
-      { label: 'khong', value: false, hint: 'giu nguyen trong config.toml' },
+    if (!model) throw new CcpError('a model is required')
+    const dropTier = await select('Drop service_tier + model_reasoning_effort?', [
+      { label: 'yes', value: true, hint: 'third-party providers usually reject them', default: true },
+      { label: 'no', value: false, hint: 'leave them in config.toml' },
     ])
     vaultWrite(name, key)
     profile = {
@@ -175,26 +175,26 @@ async function cmdAdd(state) {
 
   store.put(state, name, profile)
   store.save(state)
-  ok(`da them "${name}"`)
-  if (await confirm(`  Activate luon?`)) await cmdUse(state, name)
+  ok(`added "${name}"`)
+  if (await confirm('  Activate it now?')) await cmdUse(state, name)
 }
 
 async function cmdRemove(state, name) {
-  if (!name) throw new CcpError('thieu ten: `ccp rm <name>`')
+  if (!name) throw new CcpError('missing name: `ccp rm <name>`')
   store.get(state, name)
-  if (!(await confirm(`  Xoa profile "${name}" (ke ca key trong vault)?`))) return
+  if (!(await confirm(`  Delete profile "${name}" (including its vault entry)?`))) return
   vaultDelete(name)
   store.remove(state, name)
   store.save(state)
-  ok(`da xoa "${name}"`)
+  ok(`deleted "${name}"`)
 }
 
 function cmdEnv(state, name) {
-  if (!name) throw new CcpError('thieu ten: `ccp env <name>`')
+  if (!name) throw new CcpError('missing name: `ccp env <name>`')
   const p = store.get(state, name)
-  if (p.target !== 'claude') throw new CcpError('env chi dung cho profile claude')
+  if (p.target !== 'claude') throw new CcpError('env only applies to claude profiles')
   if (p.kind === 'oauth') {
-    console.error('# profile oauth dung keychain, khong co env — chay `ccp use` thay vi `eval`')
+    console.error('# oauth profiles live in the keychain and have no env — use `ccp use` instead of `eval`')
     process.exitCode = 1
     return
   }
@@ -207,19 +207,19 @@ function cmdDoctor(state) {
   console.log(`\n  ${c.bold('doctor')}\n`)
 
   const settings = readJson(claude.PATHS.SETTINGS, null)
-  if (settings) ok(`settings.json doc duoc · model=${settings.model ?? '(khong set)'}`)
-  else warn(`khong thay ${claude.PATHS.SETTINGS}`)
+  if (settings) ok(`settings.json readable · model=${settings.model ?? '(not set)'}`)
+  else warn(`${claude.PATHS.SETTINGS} not found`)
   const envKeys = Object.keys(settings?.env ?? {})
-  info(envKeys.length ? `env dang set: ${envKeys.join(', ')}` : 'settings.json khong co env')
+  info(envKeys.length ? `env currently set: ${envKeys.join(', ')}` : 'settings.json has no env')
 
   const selfService = 'ccp-selftest'
   try {
     writeSecret(selfService, `probe-${process.pid}`)
     const back = readSecret(selfService)
-    if (back === `probe-${process.pid}`) ok('keychain doc/ghi duoc')
-    else fail('keychain ghi duoc nhung doc lai sai')
+    if (back === `probe-${process.pid}`) ok('keychain readable and writable')
+    else fail('keychain accepted the write but read back the wrong value')
   } catch (e) {
-    fail(`keychain loi: ${e.message}`)
+    fail(`keychain error: ${e.message}`)
   } finally {
     deleteSecret(selfService)
   }
@@ -228,38 +228,38 @@ function cmdDoctor(state) {
   if (activeClaude && state.profiles[activeClaude]?.kind === 'oauth') {
     const live = readSecret(CLAUDE_SERVICE)
     const saved = vaultRead(activeClaude)
-    if (!live) warn('khong doc duoc token dang dung (chua login?)')
-    else if (live === saved) ok(`vault cua "${activeClaude}" khop token dang dung`)
-    else warn(`token dang dung da refresh — chay \`ccp capture\` de vault khong bi cu`)
+    if (!live) warn('could not read the token in use (not logged in?)')
+    else if (live === saved) ok(`vault for "${activeClaude}" matches the token in use`)
+    else warn('the token in use has been refreshed — run `ccp capture` so the vault does not go stale')
   }
 
   const ids = state.managed.codexProviderIds ?? []
-  info(ids.length ? `codex provider ccp dang quan: ${ids.join(', ')}` : 'chua quan codex provider nao')
+  info(ids.length ? `codex providers ccp manages: ${ids.join(', ')}` : 'not managing any codex provider yet')
   info(`keychain account: ${ACCOUNT}`)
   info(`profiles: ${store.FILE_PATH}`)
 
   try {
     const stamps = fs.readdirSync(BACKUP_DIR).sort()
-    info(stamps.length ? `backup gan nhat: ${path.join(BACKUP_DIR, stamps[stamps.length - 1])}` : 'chua co backup')
+    info(stamps.length ? `latest backup: ${path.join(BACKUP_DIR, stamps[stamps.length - 1])}` : 'no backups yet')
   } catch {
-    info('chua co backup')
+    info('no backups yet')
   }
   console.log('')
 }
 
 function usage() {
   console.log(`
-  ${c.bold('ccp')} — doi profile cho Claude Code va Codex
+  ${c.bold('ccp')} — switch profiles for Claude Code and Codex
 
-  ${c.dim('ccp')}                 mo menu chon profile
-  ${c.dim('ccp list')}            liet ke profile
-  ${c.dim('ccp use <name>')}      activate (tu capture token cu truoc khi doi)
-  ${c.dim('ccp add')}             them profile moi
-  ${c.dim('ccp rm <name>')}       xoa profile
-  ${c.dim('ccp capture [name]')}  luu lai token dang dung vao vault
-  ${c.dim('ccp check <name>')}    goi thu endpoint xem song khong
-  ${c.dim('ccp env <name>')}      in export env de \`eval $(ccp env x)\`
-  ${c.dim('ccp doctor')}          kiem tra thiet lap
+  ${c.dim('ccp')}                 open the profile menu
+  ${c.dim('ccp list')}            list profiles
+  ${c.dim('ccp use <name>')}      activate (captures the old token first)
+  ${c.dim('ccp add')}             add a profile
+  ${c.dim('ccp rm <name>')}       delete a profile
+  ${c.dim('ccp capture [name]')}  save the token in use back into the vault
+  ${c.dim('ccp check <name>')}    probe the endpoint to see if it is alive
+  ${c.dim('ccp env <name>')}      print exports for \`eval $(ccp env x)\`
+  ${c.dim('ccp doctor')}          check the setup
 `)
 }
 
@@ -277,7 +277,7 @@ async function runTui(state) {
       if (e instanceof CcpError) fail(e.message)
       else throw e
     }
-    await ask(`\n  ${c.dim('enter de ve menu...')}`)
+    await ask(`\n  ${c.dim('press enter to go back...')}`)
     state = store.load()
   }
 }
