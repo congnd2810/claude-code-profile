@@ -107,7 +107,9 @@ claude                # then /login with the second account
 ccp add               # claude → oauth → name: personal-max
 ```
 
-From then on `ccp use work-max` / `ccp use personal-max` is all it takes.
+From then on `ccp use work-max` / `ccp use personal-max` is all it takes. There is no limit on how many accounts you add.
+
+Logging in by hand means the keychain token no longer belongs to whatever profile `ccp` thinks is active. `ccp` detects that by comparing `accountUuid` and skips the capture rather than overwriting the other account's vault, so a hand login can never cost you a stored login. A genuine token refresh on the *same* account is still captured normally.
 
 ## What it touches
 
@@ -207,6 +209,7 @@ These run against a fake `HOME` (real configs are copied in as fixtures, never m
 FAKE_HOME=/tmp/ccp-test node test/1-apply.mjs         # patches config.toml + settings.json, idempotency
 FAKE_HOME=/tmp/ccp-test node test/2-oauth-switch.mjs  # TOML validity, account switch, token refresh
 FAKE_HOME=/tmp/ccp-test TTF_KEY=sk-... node test/3-check-cli.mjs
+FAKE_HOME=/tmp/ccp-test node test/4-two-accounts.mjs  # two-account flow incl. hand login
 ```
 
 ## A note on third-party providers

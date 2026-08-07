@@ -58,8 +58,24 @@ export function captureActive(state, { quiet = false } = {}) {
   }
   if (blob === vaultRead(name)) return false // unchanged, nothing to do
 
-  vaultWrite(name, blob)
   const id = liveIdentity()
+  // The live token does not necessarily belong to the active profile: logging
+  // in by hand (which is how a second account gets added) swaps it behind our
+  // back. Capturing blindly would overwrite one account's vault with another
+  // account's token and lose the first login.
+  const was = p.identity?.accountUuid
+  const now = id.oauthAccount?.accountUuid
+  if (was && now && was !== now) {
+    if (!quiet) {
+      warn(
+        `the live login is ${id.oauthAccount.emailAddress}, not "${name}" (${p.identity.emailAddress}) ` +
+          `— skipping capture so its vault is not overwritten`,
+      )
+    }
+    return false
+  }
+
+  vaultWrite(name, blob)
   if (id.oauthAccount) p.identity = id.oauthAccount
   if (id.userID) p.userID = id.userID
   const m = liveModel()

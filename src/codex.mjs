@@ -176,6 +176,13 @@ export function captureActive(state, { quiet = false } = {}) {
   }
   if (blob === vaultRead(name)) return false
 
+  // Same hazard as the Claude side: if auth.json was switched to an api key by
+  // hand, it is not this profile's ChatGPT login and must not land in its vault.
+  if (readJson(AUTH, {}).auth_mode !== 'chatgpt') {
+    if (!quiet) warn(`auth.json is no longer a ChatGPT login — skipping capture for "${name}"`)
+    return false
+  }
+
   vaultWrite(name, blob)
   p.capturedAt = Date.now()
   if (!quiet) ok(`captured the refreshed auth.json for "${name}"`)
