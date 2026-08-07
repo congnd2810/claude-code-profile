@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-const SRC = '/Volumes/congo-ssd/code/congnd/ccp/src'
+const SRC = new URL('../src', import.meta.url).pathname
 const FAKE = process.env.FAKE_HOME
 process.env.HOME = FAKE
 process.env.CCP_CLAUDE_SERVICE = 'ccp-faketest-credentials'

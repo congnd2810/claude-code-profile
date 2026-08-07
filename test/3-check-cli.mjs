@@ -3,7 +3,7 @@
 // codex/responses fails with "No available accounts".
 import { spawnSync } from 'node:child_process'
 
-const SRC = '/Volumes/congo-ssd/code/congnd/ccp/src'
+const SRC = new URL('../src', import.meta.url).pathname
 const FAKE = process.env.FAKE_HOME
 const KEY = process.env.TTF_KEY
 process.env.HOME = FAKE

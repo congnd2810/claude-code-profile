@@ -9,7 +9,7 @@ Switch between native Claude subscription accounts, Anthropic API keys, and thir
 ## Install
 
 ```bash
-cd /Volumes/congo-ssd/code/congnd/ccp
+cd /path/to/ccp
 npm link                                      # or: ln -s "$PWD/src/ccp.mjs" /usr/local/bin/ccp
 ccp doctor                                    # verify the keychain is readable/writable
 ```

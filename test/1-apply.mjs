@@ -3,16 +3,46 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 
-const SRC = '/Volumes/congo-ssd/code/congnd/ccp/src'
+const SRC = new URL('../src', import.meta.url).pathname
 const FAKE = process.env.FAKE_HOME
 const REAL = os.homedir()
+
+// Prefer this machine's real configs as fixtures — that is the shape that has
+// to survive. On a machine without them, fall back to a minimal stand-in so
+// the test still runs.
+const FALLBACK_TOML = `personality = "pragmatic"
+model = "gpt-5.6-sol"
+model_reasoning_effort = "xhigh"
+service_tier = "priority"
+
+[mcp_servers.example]
+command = "/bin/true"
+
+[shell_environment_policy]
+inherit = "core"
+
+[projects."/tmp/example"]
+trust_level = "trusted"
+`
+const FALLBACK_SETTINGS = { permissions: { allow: ['Read', 'Edit'] }, model: 'opus[1m]' }
 
 fs.rmSync(FAKE, { recursive: true, force: true })
 fs.mkdirSync(path.join(FAKE, '.codex'), { recursive: true })
 fs.mkdirSync(path.join(FAKE, '.claude'), { recursive: true })
-// Copy the real configs in as fixtures — this is the shape that must survive.
-fs.copyFileSync(path.join(REAL, '.codex/config.toml'), path.join(FAKE, '.codex/config.toml'))
-fs.copyFileSync(path.join(REAL, '.claude/settings.json'), path.join(FAKE, '.claude/settings.json'))
+
+const realToml = path.join(REAL, '.codex/config.toml')
+const realSettings = path.join(REAL, '.claude/settings.json')
+const usingReal = fs.existsSync(realToml)
+console.log(usingReal ? 'fixture: real ~/.codex/config.toml' : 'fixture: built-in fallback (no real config here)')
+
+if (usingReal) fs.copyFileSync(realToml, path.join(FAKE, '.codex/config.toml'))
+else fs.writeFileSync(path.join(FAKE, '.codex/config.toml'), FALLBACK_TOML)
+
+if (fs.existsSync(realSettings)) fs.copyFileSync(realSettings, path.join(FAKE, '.claude/settings.json'))
+else fs.writeFileSync(path.join(FAKE, '.claude/settings.json'), JSON.stringify(FALLBACK_SETTINGS, null, 2))
+
+// Snapshot the fixture before ccp edits it, so invariants compare like for like.
+const sourceToml = fs.readFileSync(path.join(FAKE, '.codex/config.toml'), 'utf8')
 fs.writeFileSync(path.join(FAKE, '.codex/auth.json'), JSON.stringify({ auth_mode: 'chatgpt', tokens: { fake: 'x' } }, null, 2))
 fs.writeFileSync(path.join(FAKE, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'real@x.com' }, numStartups: 8 }, null, 2))
 
@@ -57,9 +87,8 @@ console.log('\n########## config.toml: tail ##########')
 console.log(toml.split('\n').slice(-12).join('\n'))
 
 console.log('\n########## invariants ##########')
-const real = fs.readFileSync(path.join(REAL, '.codex/config.toml'), 'utf8')
 const tables = (s) => (s.match(/^\[[^\]]+\]/gm) ?? [])
-const realTables = tables(real).filter((t) => !t.startsWith('[model_providers.'))
+const realTables = tables(sourceToml).filter((t) => !t.startsWith('[model_providers.'))
 const newTables = tables(toml).filter((t) => !t.startsWith('[model_providers.'))
 const lost = realTables.filter((t) => !newTables.includes(t))
 console.log('tables kept:', newTables.length, '/', realTables.length, lost.length ? `LOST: ${lost}` : '(none lost)')
