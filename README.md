@@ -47,6 +47,7 @@ ccp use work-max
 | `ccp rm <name>` | delete a profile and its vault entry |
 | `ccp capture [name]` | save the token in use back into the vault |
 | `ccp check <name>` | probe the endpoint to see if it is alive |
+| `ccp usage [name]` | quota left on a first-party login |
 | `ccp env <name>` | print exports for `eval` in a single shell |
 | `ccp doctor` | check the setup |
 
@@ -60,6 +61,7 @@ ccp use work-max
 | `a` | add a profile |
 | `d` | delete a profile |
 | `t` | probe the endpoint |
+| `u` | show quota |
 | `q` or `esc` | quit |
 
 ### Output symbols
@@ -148,6 +150,26 @@ The TOML blocks are written so top-level keys always precede the first table and
 **2. The first login for each account is manual.**
 
 **3. Switching does not affect a running session.** Restart Claude Code / Codex.
+
+## Quota
+
+```
+$ ccp usage
+
+  work-max (claude/oauth) ● active
+     5 hours   ██░░░░░░░░  16% · resets in 2h 20m
+     7 days    █░░░░░░░░░   9% · resets in 4d 5h
+
+  gpt1 (codex/chatgpt) ● active
+  · you@example.com · plus
+     7d        ░░░░░░░░░░   0% · resets in 7d
+```
+
+With no argument it reports the two logins currently active; pass a name for one profile.
+
+First-party logins only. Claude comes from `api.anthropic.com/api/oauth/usage`, Codex from `chatgpt.com/backend-api/codex/usage` — the same endpoints the official CLIs call, with the same headers they identify themselves with. Third-party providers report `not available`, because none of them expose quota.
+
+One caveat: it needs a working access token, and those are short-lived. For a profile that is not active the stored token has usually expired, so you get `token rejected (http 401)` — activate it, open the app once, `ccp capture`, then ask again.
 
 ## Running two profiles at once
 

@@ -7,6 +7,7 @@ import * as claude from './claude.mjs'
 import * as codex from './codex.mjs'
 import { ACCOUNT, CLAUDE_SERVICE, deleteSecret, readSecret, vaultDelete, vaultRead, vaultWrite, writeSecret } from './keychain.mjs'
 import { check } from './check.mjs'
+import { usage, usageAll } from './usage.mjs'
 import { menu, select } from './tui.mjs'
 
 const mod = (target) => (target === 'claude' ? claude : codex)
@@ -282,7 +283,7 @@ function cmdDoctor(state) {
   console.log('')
 }
 
-function usage() {
+function printHelp() {
   console.log(`
   ${c.bold('ccp')} — switch profiles for Claude Code and Codex
 
@@ -293,6 +294,7 @@ function usage() {
   ${c.dim('ccp rm <name>')}       delete a profile
   ${c.dim('ccp capture [name]')}  save the token in use back into the vault
   ${c.dim('ccp check <name>')}    probe the endpoint to see if it is alive
+  ${c.dim('ccp usage [name]')}    quota left on a first-party login
   ${c.dim('ccp env <name>')}      print exports for \`eval $(ccp env x)\`
   ${c.dim('ccp doctor')}          check the setup
 `)
@@ -308,6 +310,7 @@ async function runTui(state) {
       else if (action === 'add') await cmdAdd(state)
       else if (action === 'delete') await cmdRemove(state, name)
       else if (action === 'check') await check(state, name)
+      else if (action === 'usage') await usage(state, name)
     } catch (e) {
       if (e instanceof CcpError) fail(e.message)
       else throw e
@@ -323,7 +326,7 @@ async function main() {
 
   switch (cmd) {
     case undefined:
-      if (!process.stdin.isTTY) return usage()
+      if (!process.stdin.isTTY) return printHelp()
       return runTui(state)
     case 'list':
     case 'ls':
@@ -339,12 +342,16 @@ async function main() {
       return cmdCapture(state, arg)
     case 'check':
       return check(state, arg ?? state.active.claude)
+    case 'usage':
+      if (arg) return usage(state, arg).then(() => console.log(''))
+      // No name given: the logins in play right now.
+      return usageAll(state, [state.active.claude, state.active.codex].filter(Boolean))
     case 'env':
       return cmdEnv(state, arg)
     case 'doctor':
       return cmdDoctor(state)
     default:
-      return usage()
+      return printHelp()
   }
 }
 

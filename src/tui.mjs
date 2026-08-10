@@ -5,7 +5,7 @@ import * as codex from './codex.mjs'
 
 const ESC = String.fromCharCode(27)
 const CTRL_C = String.fromCharCode(3)
-const HINT = c.dim('↑↓ move · enter activate · [c]apture · [a]dd · [d]elete · [t]est · [q]uit')
+const HINT = c.dim('↑↓ move · enter activate · [c]apture · [a]dd · [d]elete · [t]est · [u]sage · [q]uit')
 
 /**
  * Inline arrow-key picker. Draws in place (no screen clear) so the answers
@@ -138,6 +138,7 @@ export function menu(state) {
       if (key === 'a') return done({ action: 'add' })
       if (key === 'd') return done({ action: 'delete', name })
       if (key === 't') return done({ action: 'check', name })
+      if (key === 'u') return done({ action: 'usage', name })
     }
 
     render(state, list, cursor)
