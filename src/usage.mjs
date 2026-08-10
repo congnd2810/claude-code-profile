@@ -1,6 +1,8 @@
 import { c, fail, fmtAge, info, warn } from './util.mjs'
 import { vaultRead } from './keychain.mjs'
 import { get, names, save } from './store.mjs'
+import { liveBlob as claudeLive } from './claude.mjs'
+import { liveBlob as codexLive } from './codex.mjs'
 
 const TIMEOUT_MS = 25_000
 
@@ -69,9 +71,18 @@ function explain(r, name) {
   fail(`http ${r.status} · ${r.text.slice(0, 120).replace(/\s+/g, ' ')}`)
 }
 
-function tokenFrom(name, pick) {
-  const blob = vaultRead(name)
-  if (!blob) return { error: 'nothing stored in the vault' }
+/**
+ * For the active profile the credential in use is the current one; the vault
+ * holds whatever was captured last, which goes stale as tokens refresh. Reading
+ * the vault for an active profile is what made every call 401.
+ */
+function blobFor(name, active, live) {
+  const blob = (active && live()) || vaultRead(name)
+  if (!blob) return { error: active ? 'no credential in use, and nothing in the vault' : 'nothing stored in the vault' }
+  return { blob }
+}
+
+function tokenFrom(blob, pick) {
   try {
     const value = pick(JSON.parse(blob))
     return value ? { value } : { error: 'no access token in the stored login' }
@@ -80,8 +91,10 @@ function tokenFrom(name, pick) {
   }
 }
 
-async function fetchClaude(name) {
-  const t = tokenFrom(name, (j) => j?.claudeAiOauth?.accessToken)
+async function fetchClaude(name, active) {
+  const b = blobFor(name, active, claudeLive)
+  if (b.error) return { error: b.error }
+  const t = tokenFrom(b.blob, (j) => j?.claudeAiOauth?.accessToken)
   if (t.error) return { error: t.error }
 
   const r = await getJson(CLAUDE_USAGE, {
@@ -111,12 +124,14 @@ async function fetchClaude(name) {
   }
 }
 
-async function fetchCodex(name) {
-  const t = tokenFrom(name, (j) => j?.tokens?.access_token)
+async function fetchCodex(name, active) {
+  const b = blobFor(name, active, codexLive)
+  if (b.error) return { error: b.error }
+  const t = tokenFrom(b.blob, (j) => j?.tokens?.access_token)
   if (t.error) return { error: t.error }
   let accountId = ''
   try {
-    accountId = JSON.parse(vaultRead(name))?.tokens?.account_id ?? ''
+    accountId = JSON.parse(b.blob)?.tokens?.account_id ?? ''
   } catch {
     /* optional header */
   }
@@ -177,11 +192,11 @@ function heading(state, name) {
 
 /** Live query for one profile, falling back to the cached snapshot. */
 export async function usage(state, name) {
-  const { p } = heading(state, name)
+  const { p, active } = heading(state, name)
   const fetcher = FETCHERS[p.kind]
   if (!fetcher) return info('not available — third-party providers do not report quota')
 
-  const r = await fetcher(name)
+  const r = await fetcher(name, active)
   if (r.snapshot) {
     p.usage = r.snapshot
     save(state)
@@ -212,7 +227,7 @@ export async function usageAll(state, { activeOnly = false } = {}) {
   for (const name of logins) {
     const { p, active } = heading(state, name)
     if (active) {
-      const r = await FETCHERS[p.kind](name)
+      const r = await FETCHERS[p.kind](name, true)
       if (r.snapshot) {
         p.usage = r.snapshot
         render(r.snapshot, { live: true })

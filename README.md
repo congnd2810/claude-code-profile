@@ -178,6 +178,8 @@ $ ccp usage --all
 
 First-party logins only. Claude comes from `api.anthropic.com/api/oauth/usage`, Codex from `chatgpt.com/backend-api/codex/usage` — the same endpoints the official CLIs call, with the same headers they identify themselves with. Third-party providers report `not available`, because none of them expose quota.
 
+For the active profile the token is read from the credential **in use** (keychain / `auth.json`), not from the vault — the vault copy is whatever `capture` last stored and goes stale as tokens refresh.
+
 **Why the non-active ones are cached, not live.** Access tokens are short-lived, so a profile you are not currently using almost always has an expired one. Querying it live would mean refreshing the token — and OAuth refresh rotates it, so a failure mid-way costs you that login. Not worth it for a number on screen. Instead every successful call is stored on the profile, and `--all` replays the last known figures with their age. Marked `live` or `as of 2d ago` so the two are never confused.
 
 A cached window whose reset time has already passed says `window has reset since` rather than showing a countdown that means nothing.

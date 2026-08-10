@@ -231,6 +231,11 @@ export function liveIdentity() {
   return identityOf(readJson(AUTH, {}))
 }
 
+/** The auth.json in use, which is newer than the vault copy whenever tokens refreshed. */
+export function liveBlob() {
+  return readText(AUTH)
+}
+
 export function captureInto(state, name, { label } = {}) {
   const blob = readText(AUTH)
   if (!blob) throw new CcpError(`${AUTH} not found — log in to Codex first`)
