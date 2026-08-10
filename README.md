@@ -99,12 +99,18 @@ Two easy mistakes:
 
 ### Adding a second Claude account
 
-The login step cannot be automated, and should not be:
+`ccp add` can drive the login for you — pick **no, sign in now** and it runs `claude auth login` (optionally prefilling an email), waits for you to finish in the browser, then captures the result:
 
 ```bash
 ccp use work-max      # make sure the current account is safely captured
-claude                # then /login with the second account
-ccp add               # claude → oauth → name: personal-max
+ccp add               # claude → oauth → "sign in now" → name: personal-max
+```
+
+The browser step itself cannot be skipped: signing in is an OAuth flow that has to happen there. If you would rather do it yourself, log in first and pick **capture the current login** instead:
+
+```bash
+claude auth login --email you@example.com
+ccp add               # claude → oauth → "capture the current login"
 ```
 
 From then on `ccp use work-max` / `ccp use personal-max` is all it takes. There is no limit on how many accounts you add, and the same works for multiple ChatGPT accounts on the Codex side.

@@ -35,6 +35,14 @@ export function run(cmd, args, opts = {}) {
   return { code: r.status ?? 1, out: (r.stdout ?? '').trim(), err: (r.stderr ?? '').trim() }
 }
 
+/** Hand the terminal to another program (a login flow) and wait for it. */
+export function runInteractive(cmd, args) {
+  const r = spawnSync(cmd, args, { stdio: 'inherit' })
+  if (r.error?.code === 'ENOENT') throw new CcpError(`\`${cmd}\` is not in PATH`)
+  if (r.error) throw new CcpError(`${cmd}: ${r.error.message}`)
+  return r.status ?? 1
+}
+
 export function readText(file) {
   try {
     return fs.readFileSync(file, 'utf8')

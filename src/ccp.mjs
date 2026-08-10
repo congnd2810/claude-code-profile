@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs'
 import path from 'node:path'
-import { BACKUP_DIR, CcpError, ask, c, confirm, fail, fmtAge, info, ok, readJson, stampNow, warn } from './util.mjs'
+import { BACKUP_DIR, CcpError, ask, c, confirm, fail, fmtAge, info, ok, readJson, runInteractive, stampNow, warn } from './util.mjs'
 import * as store from './store.mjs'
 import * as claude from './claude.mjs'
 import * as codex from './codex.mjs'
@@ -118,7 +118,25 @@ async function cmdAdd(state) {
 
   let profile
   if (kind === 'oauth') {
-    console.log(`  ${c.dim('Saves the Claude Code login currently in use into the vault.')}`)
+    const source = await select('Is this account already logged in?', [
+      { label: 'yes, capture the current login', value: 'current', default: true },
+      { label: 'no, sign in now', value: 'login', hint: 'runs `claude auth login`, opens a browser' },
+    ])
+    if (!source) return
+
+    if (source === 'login') {
+      const before = claude.liveIdentity().oauthAccount?.accountUuid ?? null
+      const email = await ask('  Email to prefill (enter to skip): ')
+      console.log(`  ${c.dim('Handing over to `claude auth login` — finish in the browser, then come back.')}\n`)
+      const code = runInteractive('claude', ['auth', 'login', ...(email ? ['--email', email] : [])])
+      if (code !== 0) throw new CcpError('`claude auth login` did not finish — nothing was saved')
+
+      const after = claude.liveIdentity().oauthAccount?.accountUuid ?? null
+      if (before && after && before === after) {
+        warn('still the same account as before — check that the browser login used the intended one')
+      }
+    }
+
     profile = claude.captureInto(state, name)
     ok(`captured: ${profile.identity?.emailAddress ?? '(email not readable)'}`)
   } else if (kind === 'chatgpt') {
