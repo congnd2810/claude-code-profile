@@ -295,6 +295,7 @@ function printHelp() {
   ${c.dim('ccp capture [name]')}  save the token in use back into the vault
   ${c.dim('ccp check <name>')}    probe the endpoint to see if it is alive
   ${c.dim('ccp usage [name]')}    quota left on a first-party login
+  ${c.dim('ccp usage --all')}     every login: live if active, cached otherwise
   ${c.dim('ccp env <name>')}      print exports for \`eval $(ccp env x)\`
   ${c.dim('ccp doctor')}          check the setup
 `)
@@ -343,9 +344,10 @@ async function main() {
     case 'check':
       return check(state, arg ?? state.active.claude)
     case 'usage':
+      if (arg === '--all' || arg === '-a') return usageAll(state)
       if (arg) return usage(state, arg).then(() => console.log(''))
       // No name given: the logins in play right now.
-      return usageAll(state, [state.active.claude, state.active.codex].filter(Boolean))
+      return usageAll(state, { activeOnly: true })
     case 'env':
       return cmdEnv(state, arg)
     case 'doctor':

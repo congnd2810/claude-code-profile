@@ -48,6 +48,7 @@ ccp use work-max
 | `ccp capture [name]` | save the token in use back into the vault |
 | `ccp check <name>` | probe the endpoint to see if it is alive |
 | `ccp usage [name]` | quota left on a first-party login |
+| `ccp usage --all` | every login at once: live if active, cached otherwise |
 | `ccp env <name>` | print exports for `eval` in a single shell |
 | `ccp doctor` | check the setup |
 
@@ -154,24 +155,34 @@ The TOML blocks are written so top-level keys always precede the first table and
 ## Quota
 
 ```
-$ ccp usage
+$ ccp usage --all
 
   work-max (claude/oauth) ● active
-     5 hours   ██░░░░░░░░  16% · resets in 2h 20m
-     7 days    █░░░░░░░░░   9% · resets in 4d 5h
+     5 hours   ███░░░░░░░  25% · resets in 1h 53m · live
+     7 days    █░░░░░░░░░  10% · resets in 4d 5h · live
+
+  personal-max (claude/oauth)
+     5 hours   ██████░░░░  61% · window has reset since · as of 2d ago
+     7 days    ████░░░░░░  44% · as of 2d ago
 
   gpt1 (codex/chatgpt) ● active
   · you@example.com · plus
-     7d        ░░░░░░░░░░   0% · resets in 7d
+     7d        ░░░░░░░░░░   0% · resets in 7d · live
 ```
 
-With no argument it reports the two logins currently active; pass a name for one profile.
+| Form | Shows |
+|---|---|
+| `ccp usage` | the two logins active right now, live |
+| `ccp usage <name>` | one profile, live, falling back to its cached figures |
+| `ccp usage --all` | every first-party login — live for active ones, cached for the rest |
 
 First-party logins only. Claude comes from `api.anthropic.com/api/oauth/usage`, Codex from `chatgpt.com/backend-api/codex/usage` — the same endpoints the official CLIs call, with the same headers they identify themselves with. Third-party providers report `not available`, because none of them expose quota.
 
-One caveat: it needs a working access token, and those are short-lived. For a profile that is not active the stored token has usually expired, so you get `token rejected (http 401)` — activate it, open the app once, `ccp capture`, then ask again.
+**Why the non-active ones are cached, not live.** Access tokens are short-lived, so a profile you are not currently using almost always has an expired one. Querying it live would mean refreshing the token — and OAuth refresh rotates it, so a failure mid-way costs you that login. Not worth it for a number on screen. Instead every successful call is stored on the profile, and `--all` replays the last known figures with their age. Marked `live` or `as of 2d ago` so the two are never confused.
 
-## Running two profiles at once
+A cached window whose reset time has already passed says `window has reset since` rather than showing a countdown that means nothing.
+
+## Running two profiles at once## Running two profiles at once
 
 `ccp use` is global (it writes `settings.json`), which also covers Claude Code launched from VSCode or the desktop app. To give one terminal a different profile without changing the global one:
 
