@@ -32,10 +32,29 @@ const SEC_ENV = {
   timeout: 15_000,
 }
 
+/**
+ * `security -w` prints a hex dump instead of the raw value when the secret
+ * contains a newline — which every multi-line auth.json does. Decode that back,
+ * but only when the bytes really are printable text, so a secret that happens
+ * to be pure hex is left alone.
+ */
+function decodeIfHexDump(out) {
+  if (!/^[0-9a-f]+$/i.test(out) || out.length % 2 !== 0) return out
+  const text = Buffer.from(out, 'hex').toString('utf8')
+  const hasControlChar = [...text].some((ch) => {
+    const code = ch.charCodeAt(0)
+    return code < 32 && code !== 9 && code !== 10 && code !== 13
+  })
+  // The hex form only shows up for multi-line values, so require a newline
+  // before treating the digits as encoded text rather than as the secret.
+  if (!text.includes('\n') || hasControlChar) return out
+  return text
+}
+
 export function readSecret(service, account = ACCOUNT) {
   const r = run('security', ['find-generic-password', '-s', service, '-a', account, '-w'], SEC_ENV)
   if (r.code !== 0) return null
-  return r.out
+  return decodeIfHexDump(r.out)
 }
 
 export function deleteSecret(service, account = ACCOUNT) {

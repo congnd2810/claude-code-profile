@@ -78,6 +78,26 @@ function stripProviderTable(lines, id) {
   return out
 }
 
+/**
+ * Identify whose login an auth.json holds. account_id is what matters — the
+ * email is only decoded from the id_token payload so `ccp list` can show which
+ * account a profile is. No token value is ever logged or stored.
+ */
+function identityOf(auth) {
+  const accountId = auth?.tokens?.account_id ?? null
+  let email = null
+  const idToken = auth?.tokens?.id_token
+  if (typeof idToken === 'string' && idToken.split('.').length === 3) {
+    try {
+      const payload = JSON.parse(Buffer.from(idToken.split('.')[1], 'base64url').toString('utf8'))
+      email = payload.email ?? payload.preferred_username ?? null
+    } catch {
+      /* not a readable JWT — account_id alone is enough */
+    }
+  }
+  return { accountId, email }
+}
+
 function trimBlank(lines) {
   const out = [...lines]
   while (out.length && out[0].trim() === '') out.shift()
@@ -146,7 +166,9 @@ export function apply(state, name, stamp) {
           `    Log in to Codex with that account, then run \`ccp capture ${name}\`.`,
       )
     }
-    writeFileAtomic(AUTH, blob.endsWith('\n') ? blob : `${blob}\n`)
+    // Byte-for-byte, no cosmetic trailing newline: restore must round-trip
+    // exactly, or the next switch sees a "changed" file and re-captures it.
+    writeFileAtomic(AUTH, blob)
     ok('auth.json: restored the ChatGPT login')
   } else {
     const key = vaultRead(name)
@@ -178,12 +200,27 @@ export function captureActive(state, { quiet = false } = {}) {
 
   // Same hazard as the Claude side: if auth.json was switched to an api key by
   // hand, it is not this profile's ChatGPT login and must not land in its vault.
-  if (readJson(AUTH, {}).auth_mode !== 'chatgpt') {
+  const auth = readJson(AUTH, {})
+  if (auth.auth_mode !== 'chatgpt') {
     if (!quiet) warn(`auth.json is no longer a ChatGPT login — skipping capture for "${name}"`)
     return false
   }
 
+  // Nor is it necessarily *this* account: logging in by hand swaps auth.json
+  // behind our back, and capturing blindly would bury another account's login.
+  const live = identityOf(auth)
+  if (p.identity?.accountId && live.accountId && p.identity.accountId !== live.accountId) {
+    if (!quiet) {
+      warn(
+        `auth.json now belongs to ${live.email ?? live.accountId}, not "${name}" ` +
+          `(${p.identity.email ?? p.identity.accountId}) — skipping capture so its vault is not overwritten`,
+      )
+    }
+    return false
+  }
+
   vaultWrite(name, blob)
+  if (live.accountId) p.identity = live
   p.capturedAt = Date.now()
   if (!quiet) ok(`captured the refreshed auth.json for "${name}"`)
   return true
@@ -197,10 +234,12 @@ export function captureInto(state, name, { label } = {}) {
     warn(`auth.json is in "${auth.auth_mode}" mode, not "chatgpt" — capturing anyway, but double-check it`)
   }
   vaultWrite(name, blob)
+  const identity = identityOf(auth)
   return {
     target: 'codex',
     kind: 'chatgpt',
     label: label ?? 'ChatGPT login',
+    identity,
     model: readText(CONFIG)?.match(/^model\s*=\s*"([^"]+)"/m)?.[1] ?? null,
     capturedAt: Date.now(),
   }
@@ -208,6 +247,9 @@ export function captureInto(state, name, { label } = {}) {
 
 export function describe(state, name) {
   const p = get(state, name)
-  if (p.kind === 'chatgpt') return `ChatGPT login · ${p.model ?? 'default model'}`
+  if (p.kind === 'chatgpt') {
+    const who = p.identity?.email ?? p.identity?.accountId ?? 'ChatGPT login'
+    return `${who} · ${p.model ?? 'default model'}`
+  }
   return `${p.baseUrl} · ${p.wireApi ?? 'responses'} → ${p.model}`
 }
