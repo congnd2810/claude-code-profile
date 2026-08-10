@@ -140,9 +140,26 @@ async function cmdAdd(state) {
     profile = claude.captureInto(state, name)
     ok(`captured: ${profile.identity?.emailAddress ?? '(email not readable)'}`)
   } else if (kind === 'chatgpt') {
-    console.log(`  ${c.dim('Saves the ~/.codex/auth.json currently in use into the vault.')}`)
+    const source = await select('Is this account already logged in?', [
+      { label: 'yes, capture the current login', value: 'current', default: true },
+      { label: 'no, sign in now', value: 'login', hint: 'runs `codex login`, opens a browser' },
+    ])
+    if (!source) return
+
+    if (source === 'login') {
+      const before = codex.liveIdentity().accountId
+      console.log(`  ${c.dim('Handing over to `codex login` — finish in the browser, then come back.')}\n`)
+      const code = runInteractive('codex', ['login'])
+      if (code !== 0) throw new CcpError('`codex login` did not finish — nothing was saved')
+
+      const after = codex.liveIdentity().accountId
+      if (before && after && before === after) {
+        warn('still the same account as before — check that the browser login used the intended one')
+      }
+    }
+
     profile = codex.captureInto(state, name)
-    ok('captured auth.json')
+    ok(`captured: ${profile.identity?.email ?? profile.identity?.accountId ?? 'auth.json'}`)
   } else if (kind === 'apikey') {
     const key = await ask('  ANTHROPIC_API_KEY: ', { silent: true })
     if (!key) throw new CcpError('a key is required')

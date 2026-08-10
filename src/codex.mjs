@@ -226,6 +226,11 @@ export function captureActive(state, { quiet = false } = {}) {
   return true
 }
 
+/** Who auth.json belongs to right now — used to confirm a login actually switched. */
+export function liveIdentity() {
+  return identityOf(readJson(AUTH, {}))
+}
+
 export function captureInto(state, name, { label } = {}) {
   const blob = readText(AUTH)
   if (!blob) throw new CcpError(`${AUTH} not found — log in to Codex first`)

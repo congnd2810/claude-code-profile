@@ -113,7 +113,9 @@ claude auth login --email you@example.com
 ccp add               # claude → oauth → "capture the current login"
 ```
 
-From then on `ccp use work-max` / `ccp use personal-max` is all it takes. There is no limit on how many accounts you add, and the same works for multiple ChatGPT accounts on the Codex side.
+From then on `ccp use work-max` / `ccp use personal-max` is all it takes. There is no limit on how many accounts you add.
+
+Multiple ChatGPT accounts for Codex work identically — `ccp add` → `codex` → `chatgpt` offers the same choice and shells out to `codex login`.
 
 Logging in by hand means the stored credential no longer belongs to whatever profile `ccp` thinks is active. `ccp` detects that — `oauthAccount.accountUuid` for Claude, `tokens.account_id` for Codex — and skips the capture rather than overwriting the other account's vault, so a hand login can never cost you a stored login. A genuine token refresh on the *same* account is still captured normally.
 
