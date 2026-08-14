@@ -51,6 +51,18 @@ ccp use work-max
 | `ccp usage --all` | every login at once: live if active, cached otherwise |
 | `ccp env <name>` | print exports for `eval` in a single shell |
 | `ccp doctor` | check the setup |
+| `ccp commands` | liệt kê nhanh mọi lệnh |
+| `ccp completion zsh` | in script gợi ý lệnh và profile cho zsh |
+
+### Gợi ý bằng phím Tab trên zsh
+
+Thêm dòng sau vào `~/.zshrc`, rồi mở terminal mới:
+
+```bash
+eval "$(ccp completion zsh)"
+```
+
+Sau đó `ccp <Tab>` sẽ gợi ý các lệnh; `ccp use <Tab>`, `ccp check <Tab>` và các lệnh nhận profile sẽ gợi ý tên profile phù hợp. Có thể chạy `ccp commands` hoặc `ccp help` khi cần xem lại toàn bộ lệnh.
 
 ### Menu keys
 
@@ -217,9 +229,9 @@ That profile has no stored identity. Open Claude Code on the correct account, th
 
 You did not restart. Or the current shell still holds `ANTHROPIC_*` from an earlier `eval $(ccp env ...)` — shell env beats `settings.json`. Open a new terminal.
 
-**`ccp check` says the token expired**
+**`ccp check` báo access token đã hết hạn**
 
-`claude` → `/login` with that account → `ccp capture <name>`.
+Đây chưa phải là phiên đăng nhập đã hết hiệu lực. Chạy `ccp use <name>`, rồi mở lại Claude Code hoặc Codex để ứng dụng tự dùng refresh credential cấp access token mới. Chỉ đăng nhập lại nếu bước refresh tự động thất bại.
 
 ## Reverting
 

@@ -100,7 +100,9 @@ export function vaultDelete(profileName) {
 }
 
 /**
- * Best-effort expiry peek so `ccp list` can flag stale OAuth tokens.
+ * Best-effort access-token expiry peek so `ccp check` can flag stale tokens.
+ * An expired access token does not mean the stored login is invalid: the
+ * official app can normally replace it using the refresh credential.
  * Returns epoch ms or null — never throws, the blob format is not ours.
  */
 export function peekExpiry(blob) {

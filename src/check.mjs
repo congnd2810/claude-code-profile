@@ -41,12 +41,17 @@ export async function check(state, name) {
     const exp = peekExpiry(blob)
     if (exp) {
       const left = exp - Date.now()
-      if (left <= 0) warn(`token expired ${fmtAge(exp)} → run \`claude\` + \`/login\` for this account`)
-      else ok(`token still valid (${Math.round(left / 3600000)}h left)`)
+      if (left <= 0) {
+        const app = p.target === 'claude' ? 'Claude Code' : 'Codex'
+        warn(`access token expired ${fmtAge(exp)} → run \`ccp use ${name}\`, then restart ${app} to refresh it`)
+        info('sign in again only if the automatic refresh fails')
+      } else {
+        ok(`access token still valid (${Math.round(left / 3600000)}h left)`)
+      }
     } else {
-      info('token present in the vault (expiry not readable)')
+      info('login present in the vault (access-token expiry not readable)')
     }
-    return info('OAuth login — cannot be probed over HTTP, just activate it and open the app')
+    return info('stored login includes its refresh credential; activate it and open the app to refresh')
   }
 
   const secret = vaultRead(name)

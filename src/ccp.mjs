@@ -283,22 +283,83 @@ function cmdDoctor(state) {
   console.log('')
 }
 
+const COMMANDS = [
+  ['list', 'list saved profiles'],
+  ['use <name>', 'activate a profile (captures the old token first)'],
+  ['add', 'add a profile'],
+  ['rm <name>', 'delete a profile'],
+  ['capture [name]', 'save the login in use back into the vault'],
+  ['check <name>', 'check a profile or provider'],
+  ['usage [name]', 'show quota for a first-party login'],
+  ['usage --all', 'show every login (live if active, cached otherwise)'],
+  ['env <name>', 'print exports for a Claude proxy or API key'],
+  ['doctor', 'check the setup'],
+  ['completion zsh', 'print zsh tab-completion setup'],
+  ['commands', 'list commands'],
+  ['help', 'show help'],
+]
+
 function printHelp() {
+  const width = Math.max(...COMMANDS.map(([usage]) => usage.length))
+  const lines = COMMANDS.map(([usage, description]) => `  ${c.dim(`ccp ${usage}`.padEnd(width + 6))}${description}`)
   console.log(`
   ${c.bold('ccp')} — switch profiles for Claude Code and Codex
 
-  ${c.dim('ccp')}                 open the profile menu
-  ${c.dim('ccp list')}            list profiles
-  ${c.dim('ccp use <name>')}      activate (captures the old token first)
-  ${c.dim('ccp add')}             add a profile
-  ${c.dim('ccp rm <name>')}       delete a profile
-  ${c.dim('ccp capture [name]')}  save the token in use back into the vault
-  ${c.dim('ccp check <name>')}    probe the endpoint to see if it is alive
-  ${c.dim('ccp usage [name]')}    quota left on a first-party login
-  ${c.dim('ccp usage --all')}     every login: live if active, cached otherwise
-  ${c.dim('ccp env <name>')}      print exports for \`eval $(ccp env x)\`
-  ${c.dim('ccp doctor')}          check the setup
+  ${c.dim('ccp'.padEnd(width + 6))}open the profile menu
+${lines.join('\n')}
 `)
+}
+
+function printZshCompletion() {
+  const seen = new Set()
+  const commands = COMMANDS.filter(([usage]) => {
+    const name = usage.split(' ')[0]
+    if (seen.has(name)) return false
+    seen.add(name)
+    return true
+  }).map(([usage, description]) => {
+    const name = usage.split(' ')[0]
+    return `    '${name}:${description}'`
+  })
+  console.log(`#compdef ccp
+# Add to ~/.zshrc: eval "$(ccp completion zsh)"
+
+_ccp() {
+  local -a commands profiles
+  commands=(
+${commands.join('\n')}
+  )
+
+  if (( CURRENT == 2 )); then
+    _describe 'command' commands
+    return
+  fi
+
+  case \"\${words[2]}\" in
+    use|rm|remove|capture|check|usage|env)
+      profiles=(\"\${(@f)$(command ccp __complete profiles \"\${words[2]}\" 2>/dev/null)}\")
+      (( \${#profiles} )) && compadd -- \"\${profiles[@]}\"
+      [[ \"\${words[2]}\" == usage ]] && compadd -- --all -a
+      ;;
+    completion)
+      compadd -- zsh
+      ;;
+  esac
+}
+
+compdef _ccp ccp`)
+}
+
+function printCompletion(state, type, command) {
+  if (type !== 'profiles') return
+  const names = store.names(state)
+  for (const name of names) {
+    const p = state.profiles[name]
+    if (command === 'capture' && p.kind !== 'oauth' && p.kind !== 'chatgpt') continue
+    if (command === 'usage' && p.kind !== 'oauth' && p.kind !== 'chatgpt') continue
+    if (command === 'env' && (p.target !== 'claude' || p.kind === 'oauth')) continue
+    console.log(name)
+  }
 }
 
 async function runTui(state) {
@@ -322,7 +383,7 @@ async function runTui(state) {
 }
 
 async function main() {
-  const [cmd, arg] = process.argv.slice(2)
+  const [cmd, arg, third] = process.argv.slice(2)
   const state = store.load()
 
   switch (cmd) {
@@ -352,6 +413,16 @@ async function main() {
       return cmdEnv(state, arg)
     case 'doctor':
       return cmdDoctor(state)
+    case 'commands':
+    case 'help':
+    case '--help':
+    case '-h':
+      return printHelp()
+    case 'completion':
+      if (arg !== 'zsh') throw new CcpError('supported shell: `ccp completion zsh`')
+      return printZshCompletion()
+    case '__complete':
+      return printCompletion(state, arg, third)
     default:
       return printHelp()
   }
