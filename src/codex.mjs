@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { HOME, CcpError, backup, info, ok, readJson, readText, warn, writeFileAtomic, writeJsonAtomic } from './util.mjs'
 import { vaultRead, vaultWrite } from './keychain.mjs'
-import { get } from './store.mjs'
+import { get, ownerOf } from './store.mjs'
 
 const CODEX_DIR = path.join(HOME, '.codex')
 const CONFIG = path.join(CODEX_DIR, 'config.toml')
@@ -229,6 +229,12 @@ export function captureActive(state, { quiet = false } = {}) {
 /** Who auth.json belongs to right now — used to confirm a login actually switched. */
 export function liveIdentity() {
   return identityOf(readJson(AUTH, {}))
+}
+
+/** The profile that already holds the login in use, or null. */
+export function ownerOfLive(state) {
+  const { accountId } = liveIdentity()
+  return accountId ? ownerOf(state, 'codex', (id) => id.accountId === accountId) : null
 }
 
 /** The auth.json in use, which is newer than the vault copy whenever tokens refreshed. */

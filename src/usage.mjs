@@ -1,6 +1,6 @@
-import { c, fail, fmtAge, info, warn } from './util.mjs'
+import { c, fail, fmtAge, fmtDuration, info, warn } from './util.mjs'
 import { vaultRead } from './keychain.mjs'
-import { get, names, save } from './store.mjs'
+import { TARGETS, get, names, save } from './store.mjs'
 import { liveBlob as claudeLive } from './claude.mjs'
 import { liveBlob as codexLive } from './codex.mjs'
 
@@ -50,14 +50,7 @@ function untilText(target) {
   if (!target) return ''
   const ms = target - Date.now()
   if (ms <= 0) return c.dim(' · resets now')
-  // Round to minutes first, then split — rounding each unit separately is what
-  // produces nonsense like "167h 60m".
-  const mins = Math.round(ms / 60000)
-  const d = Math.floor(mins / 1440)
-  const h = Math.floor((mins % 1440) / 60)
-  const m = mins % 60
-  const parts = d ? [`${d}d`, h && `${h}h`] : h ? [`${h}h`, m && `${m}m`] : [`${m}m`]
-  return c.dim(` · resets in ${parts.filter(Boolean).join(' ')}`)
+  return c.dim(` · resets in ${fmtDuration(ms)}`)
 }
 
 /** Explain a failed call in terms of what to do about it. */
@@ -183,6 +176,22 @@ function render(snapshot, { live }) {
 
 const FETCHERS = { oauth: fetchClaude, chatgpt: fetchCodex }
 
+/** Kinds that report quota at all. Antigravity is not one of them yet. */
+export const reportsUsage = (kind) => kind in FETCHERS
+
+/**
+ * One live query, stored on the profile when it succeeds. Returns whatever the
+ * fetcher returned, so the caller can explain a failure in its own words.
+ */
+export async function fetchUsage(state, name) {
+  const p = get(state, name)
+  const fetcher = FETCHERS[p.kind]
+  if (!fetcher) return { unsupported: true }
+  const r = await fetcher(name, state.active[p.target] === name)
+  if (r.snapshot) p.usage = r.snapshot
+  return r
+}
+
 function heading(state, name) {
   const p = get(state, name)
   const active = state.active[p.target] === name
@@ -192,13 +201,17 @@ function heading(state, name) {
 
 /** Live query for one profile, falling back to the cached snapshot. */
 export async function usage(state, name) {
-  const { p, active } = heading(state, name)
-  const fetcher = FETCHERS[p.kind]
-  if (!fetcher) return info('not available — third-party providers do not report quota')
+  const { p } = heading(state, name)
+  if (!reportsUsage(p.kind)) {
+    return info(
+      p.kind === 'google'
+        ? 'not available — Antigravity does not expose its quota to ccp yet'
+        : 'not available — third-party providers do not report quota',
+    )
+  }
 
-  const r = await fetcher(name, active)
+  const r = await fetchUsage(state, name)
   if (r.snapshot) {
-    p.usage = r.snapshot
     save(state)
     return render(r.snapshot, { live: true })
   }
@@ -219,17 +232,16 @@ export async function usage(state, name) {
 export async function usageAll(state, { activeOnly = false } = {}) {
   // Grouped by tool, same order as `ccp list`, rather than one mixed A-Z list.
   const candidates = activeOnly
-    ? [state.active.claude, state.active.codex].filter(Boolean)
-    : [...names(state, 'claude'), ...names(state, 'codex')]
-  const logins = candidates.filter((n) => state.profiles[n] && FETCHERS[state.profiles[n].kind])
+    ? TARGETS.map((t) => state.active[t]).filter(Boolean)
+    : TARGETS.flatMap((t) => names(state, t))
+  const logins = candidates.filter((n) => state.profiles[n] && reportsUsage(state.profiles[n].kind))
   if (!logins.length) return info(activeOnly ? 'no first-party login is active' : 'no first-party login profiles yet')
 
   for (const name of logins) {
     const { p, active } = heading(state, name)
     if (active) {
-      const r = await FETCHERS[p.kind](name, true)
+      const r = await fetchUsage(state, name)
       if (r.snapshot) {
-        p.usage = r.snapshot
         render(r.snapshot, { live: true })
         continue
       }

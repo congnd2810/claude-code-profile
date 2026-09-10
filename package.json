@@ -1,7 +1,7 @@
 {
   "name": "ccp",
   "version": "0.1.0",
-  "description": "Switch Claude Code / Codex between subscription accounts, Anthropic API keys and third-party providers",
+  "description": "Switch Claude Code / Codex / Antigravity between subscription accounts, API keys and third-party providers, and rotate between accounts when one runs out of quota",
   "type": "module",
   "bin": {
     "ccp": "src/ccp.mjs"

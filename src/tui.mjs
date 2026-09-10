@@ -2,10 +2,13 @@ import { c, fmtAge } from './util.mjs'
 import * as store from './store.mjs'
 import * as claude from './claude.mjs'
 import * as codex from './codex.mjs'
+import * as antigravity from './antigravity.mjs'
+
+const MODULES = { claude, codex, antigravity }
 
 const ESC = String.fromCharCode(27)
 const CTRL_C = String.fromCharCode(3)
-const HINT = c.dim('↑↓ move · enter activate · [c]apture · [a]dd · [d]elete · [t]est · [u]sage · [q]uit')
+const HINT = c.dim('↑↓ move · enter activate · [c]apture · [a]dd · [d]elete · [t]est · [u]sage · [r]otate · [q]uit')
 
 /**
  * Inline arrow-key picker. Draws in place (no screen clear) so the answers
@@ -61,17 +64,32 @@ export function select(title, items) {
 
 function rows(state) {
   const out = []
-  for (const target of ['claude', 'codex']) {
+  for (const target of store.TARGETS) {
     const names = store.names(state, target)
-    out.push({ header: target === 'claude' ? 'Claude Code' : 'Codex' })
+    out.push({ header: store.TARGET_LABELS[target] })
     if (!names.length) out.push({ empty: true, target })
     for (const name of names) out.push({ name, target })
+  }
+  const pools = store.poolNames(state)
+  if (pools.length) {
+    out.push({ header: 'Pools' })
+    for (const name of pools) out.push({ name, pool: name, target: state.pools[name].target })
   }
   return out
 }
 
+/** Which pool `r` should rotate for the highlighted row. */
+function poolFor(state, row) {
+  if (!row) return null
+  if (row.pool) return row.pool
+  return (
+    store.poolNames(state, row.target).find((n) => state.pools[n].members.includes(row.name)) ??
+    store.activePoolFor(state, row.target)
+  )
+}
+
 function render(state, list, cursor) {
-  const width = Math.max(12, ...Object.keys(state.profiles).map((n) => n.length))
+  const width = Math.max(12, ...[...Object.keys(state.profiles), ...Object.keys(state.pools)].map((n) => n.length))
   const lines = ['', `  ${c.bold('ccp')} ${c.dim('— profile switcher')}`, '']
   list.forEach((row, i) => {
     if (row.header) {
@@ -82,9 +100,16 @@ function render(state, list, cursor) {
       lines.push(`     ${c.dim('(no profiles yet — press [a] to add one)')}`)
       return
     }
+    if (row.pool) {
+      const pool = state.pools[row.pool]
+      const on = store.activePoolFor(state, pool.target) === row.pool ? c.green('●') : ' '
+      const poolLabel = `${on} ${row.pool.padEnd(width)} ${c.dim('pool'.padEnd(8))} ${pool.members.join(', ')}`
+      lines.push(i === cursor ? `  ${c.inverse(` ${poolLabel} `)}` : `   ${poolLabel}`)
+      return
+    }
     const p = state.profiles[row.name]
     const active = state.active[row.target] === row.name
-    const desc = row.target === 'claude' ? claude.describe(state, row.name) : codex.describe(state, row.name)
+    const desc = MODULES[row.target].describe(state, row.name)
     const age = p.capturedAt ? c.dim(` · ${fmtAge(p.capturedAt)}`) : ''
     const mark = active ? c.green('●') : ' '
     const label = `${mark} ${row.name.padEnd(width)} ${c.dim(p.kind.padEnd(8))} ${desc}${age}`
@@ -129,13 +154,17 @@ export function menu(state) {
     }
 
     const onData = (key) => {
-      const name = list[cursor]?.name
+      const row = list[cursor]
+      const name = row?.name
       if (key === CTRL_C || key === 'q' || key === ESC) return done({ action: 'quit' })
       if (key === `${ESC}[A` || key === 'k') return move(-1)
       if (key === `${ESC}[B` || key === 'j') return move(1)
       if (key === '\r' || key === '\n') return done({ action: 'use', name })
-      if (key === 'c') return done({ action: 'capture', name })
       if (key === 'a') return done({ action: 'add' })
+      if (key === 'r') return done({ action: 'rotate', name: poolFor(state, row) })
+      // The rest act on one profile; a pool row has none, so they do nothing.
+      if (row?.pool) return
+      if (key === 'c') return done({ action: 'capture', name })
       if (key === 'd') return done({ action: 'delete', name })
       if (key === 't') return done({ action: 'check', name })
       if (key === 'u') return done({ action: 'usage', name })

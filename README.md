@@ -1,8 +1,8 @@
-# ccp — profile switcher for Claude Code and Codex
+# ccp — profile switcher for Claude Code, Codex and Antigravity
 
 `ccp` = **C**laude/**C**odex **P**rofiles.
 
-Switch between native Claude subscription accounts, Anthropic API keys, and third-party providers — for both Claude Code and Codex. Plain Node, zero dependencies, needs Node 18+ and macOS.
+Switch between native subscription accounts, API keys, and third-party providers — for Claude Code, Codex and Antigravity. Group accounts into a **pool** and rotate onto the next one when the current account runs out of quota. Plain Node, zero dependencies, needs Node 18+ and macOS.
 
 ---
 
@@ -41,10 +41,15 @@ ccp use work-max
 | Command | What it does |
 |---|---|
 | `ccp` | open the arrow-key menu |
-| `ccp list` | list profiles; `●` marks the active one |
-| `ccp use <name>` | activate (captures the old token first) |
+| `ccp list` | list profiles and pools; `●` marks the active one |
+| `ccp use <name>` | activate a profile **or a pool** (captures the old token first) |
 | `ccp add` | add a profile, step by step |
-| `ccp rm <name>` | delete a profile and its vault entry |
+| `ccp rm <name>` | delete a profile, its vault entry and its saved app login |
+| `ccp pool` | list pools and what each account has left |
+| `ccp pool <name> <profile...>` | group accounts to rotate between |
+| `ccp pool rm <name>` | delete a pool (profiles untouched) |
+| `ccp rotate [pool]` | move a pool onto its best account |
+| `ccp mark <name> [5h\|ok]` | record that an account is out of quota |
 | `ccp capture [name]` | save the token in use back into the vault |
 | `ccp check <name>` | probe the endpoint to see if it is alive |
 | `ccp usage [name]` | quota left on a first-party login |
@@ -75,6 +80,7 @@ Sau đó `ccp <Tab>` sẽ gợi ý các lệnh; `ccp use <Tab>`, `ccp check <Tab
 | `d` | delete a profile |
 | `t` | probe the endpoint |
 | `u` | show quota |
+| `r` | rotate the pool this row belongs to |
 | `q` or `esc` | quit |
 
 ### Output symbols
@@ -102,6 +108,12 @@ Sau đó `ccp <Tab>` sẽ gợi ý các lệnh; `ccp use <Tab>`, `ccp check <Tab
 |---|---|---|
 | `chatgpt` | Native ChatGPT login | just a name — it reads the current `auth.json` |
 | `provider` | Third-party provider | provider id, base URL (**with** `/v1`), `wire_api`, key, then **pick** a model |
+
+**Antigravity**
+
+| kind | What it is | What `ccp add` asks |
+|---|---|---|
+| `google` | Google account signed in to Antigravity | just a name — it reads the login the IDE and `agy` share |
 
 Anything with a finite set of answers is chosen with `↑↓` + `enter`, not typed. Only the profile name, base URL and key have to be entered.
 
@@ -134,6 +146,93 @@ Multiple ChatGPT accounts for Codex work identically — `ccp add` → `codex` �
 
 Logging in by hand means the stored credential no longer belongs to whatever profile `ccp` thinks is active. `ccp` detects that — `oauthAccount.accountUuid` for Claude, `tokens.account_id` for Codex — and skips the capture rather than overwriting the other account's vault, so a hand login can never cost you a stored login. A genuine token refresh on the *same* account is still captured normally.
 
+### Antigravity
+
+Antigravity giữ **một** login duy nhất trong keychain: service `gemini`, account `antigravity` (do go-keyring ghi, dạng `go-keyring-base64:` + base64 JSON). Cả **Antigravity IDE** và CLI **`agy`** đọc đúng ô đó, nên đổi profile là đổi cho cả hai — không phải xử lý hai nơi như Claude Desktop.
+
+```bash
+# account nào đang đăng nhập trong IDE thì lưu lại
+ccp add          # antigravity → "capture the current login" → name: agy-work
+
+# account thứ hai: chọn "I will switch accounts in the IDE now"
+ccp add          # antigravity → name: agy-personal
+# → ccp mở IDE và đợi; bạn sign out rồi sign in account kia, ccp tự capture
+
+ccp use agy-work
+```
+
+`ccp add` **không** chụp mù login đang có: nếu login đó đã thuộc một profile khác, nó nói ra và mặc định chuyển sang nhánh đợi bạn đổi account — nên không còn tạo được hai profile trỏ cùng một account (Claude và Codex cũng được chặn như vậy).
+
+Ba điều cần biết:
+
+- **Login lần đầu của mỗi account phải làm trong IDE.** `agy` không có lệnh `login` — luồng OAuth chỉ tồn tại trong app, nên `ccp` chỉ có thể mở app và theo dõi keychain tới khi account đổi (chờ tối đa 5 phút, ctrl-C để thoát).
+- **Đóng IDE khi switch.** Language server đang chạy giữ login trong bộ nhớ và có thể refresh ghi đè lên ô keychain vừa được thay. `ccp use` phát hiện IDE đang chạy, hỏi quit, rồi hỏi mở lại.
+- **`ccp usage` chưa xem được quota Antigravity.** Endpoint là `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` nhưng request shape đúng vẫn chưa dựng được (xem [docs/rotation-and-antigravity.md](docs/rotation-and-antigravity.md)). Trong lúc chờ, dùng `ccp mark <name>` khi Antigravity báo hết quota.
+
+### Nhiều account: pool và rotate
+
+Một **pool** là một nhóm account cùng tool để `ccp` chọn giữa chúng:
+
+```bash
+ccp pool maxpool work-max personal-max
+ccp use maxpool          # chọn account ít dùng nhất trong pool
+ccp rotate               # hết quota → chuyển sang account kế tiếp
+```
+
+`ccp rotate` làm đúng ba việc: query quota **live** của account đang dùng, chọn member tốt nhất, rồi `use` nó. Exit code để dùng trong shell: `0` đã đổi · `3` không cần đổi · `4` cả pool đang cạn.
+
+```
+$ ccp rotate
+
+  maxpool (claude)
+      ● work-max      out for 1h 53m · 96% used · 12s ago
+        personal-max  available · 44% used · 2d ago
+
+  ✓ restored the oauth token for "personal-max"
+  ⚠ restart Claude Code to pick this up (running sessions keep the old one)
+```
+
+Cách chọn: bỏ member đang cạn → trong số còn lại lấy member **ít dùng nhất**, hoà thì lấy member **lâu chưa dùng nhất** (nên hai account chưa có số liệu sẽ luân phiên). Ngưỡng cạn mặc định 90%, sửa được ở `pools.<name>.threshold` trong `~/.ccp/profiles.json`.
+
+`ccp mark <name> [5h|ok]` ghi tay "account này hết quota" — cần cho Antigravity (chưa có API quota) và là cách nhanh nhất khi chính tool vừa báo limit. Cờ này tự hết hạn, `ok` để xoá ngay.
+
+**Hai giới hạn phải biết:**
+
+1. **Rotate không cứu session đang chạy.** Cả ba tool đọc credential lúc khởi động — `ccp rotate` chỉ chuẩn bị cho lần mở kế tiếp. Không có bản tự động: `ccp` không chạy daemon và không tự rotate sau lưng bạn.
+2. **Chỉ account đang dùng mới có số liệu live.** Các member khác dựa trên snapshot cache (lý do ở [Quota](#quota)), nên một pick có thể sai; lần `rotate` sau thấy số liệu live và tự đi tiếp.
+
+### Ứng dụng Claude Desktop
+
+`Claude.app` **không** đọc keychain item `Claude Code-credentials`. Nó giữ login riêng ở hai chỗ:
+
+- `~/Library/Application Support/Claude/config.json` — `oauth:tokenCacheV2` (token mã hoá bằng khoá keychain `Claude Safe Storage`) và `lastKnownAccountUuid`
+- cookie store của app (`Cookies`) — session `sessionKey` của claude.ai mà cửa sổ app đang đăng nhập
+
+Tab Claude Code bên trong app cũng nhận credential từ đó (app bơm xuống qua env), nên đổi profile ở terminal không ảnh hưởng gì tới app — dù có tắt bật lại bao nhiêu lần.
+
+`ccp` xử lý cả hai chỗ đó, nhưng **lần đầu của mỗi account vẫn phải đăng nhập bằng tay trong app**:
+
+```bash
+# app đang đăng nhập account nào thì lưu lại cho profile đó
+ccp capture work-max
+
+# đăng nhập app sang account kia (Settings → sign out → sign in), rồi:
+ccp capture personal-max
+
+# từ đây trở đi:
+ccp use work-max          # hỏi quit app → swap login → hỏi mở lại app
+```
+
+Mỗi lần `ccp use` một profile `oauth`:
+
+1. login app hiện tại được lưu vào profile sở hữu nó (so khớp `accountUuid`), nên không bao giờ mất
+2. nếu profile đích chưa có bản lưu → chỉ cảnh báo, app giữ nguyên account cũ
+3. có rồi → hỏi quit app (bắt buộc: app ghi đè `config.json` và cookie store khi thoát), swap, rồi hỏi mở lại
+
+Token được copy **nguyên dạng ciphertext**, không cần giải mã — khoá `Claude Safe Storage` gắn với user chứ không gắn với account. Đổi lại, bản lưu chỉ dùng được trên cùng máy, cùng user.
+
+`ccp doctor` cho biết app đang đăng nhập account nào và profile nào đã có bản lưu.
+
 ## What it touches
 
 | File | What changes |
@@ -141,8 +240,13 @@ Logging in by hand means the stored credential no longer belongs to whatever pro
 | `~/.claude/settings.json` | `env` (only the `ANTHROPIC_*` vars it owns) and `model` |
 | `~/.claude.json` | `oauthAccount`, `userID` — so Claude Code shows the right account |
 | Keychain `Claude Code-credentials` | the OAuth blob |
+| `~/Library/Application Support/Claude/config.json` | `oauth:tokenCache`, `oauth:tokenCacheV2`, `lastKnownAccountUuid` — the Claude Desktop login |
+| `~/Library/Application Support/Claude/Cookies*` | the claude.ai web session the app window is signed in with |
 | `~/.codex/config.toml` | two marker-delimited blocks, `# >>> ccp:keys` and `# >>> ccp:provider` |
 | `~/.codex/auth.json` | `auth_mode` + `OPENAI_API_KEY`, keeping the existing `tokens` |
+| Keychain `gemini` (account `antigravity`) | the Antigravity login, shared by the IDE and `agy` |
+
+Antigravity has no config file in the mix: nothing under `~/.gemini/` is read or written.
 
 Nothing outside those regions is touched — your `permissions`, `mcp_servers`, `plugins`, `projects` and `shell_environment_policy` survive intact. Before every `use`, the original files are copied into `~/.ccp/backups/<timestamp>/`.
 
@@ -154,6 +258,7 @@ The TOML blocks are written so top-level keys always precede the first table and
 |---|---|
 | macOS Keychain, service `ccp-vault` | keys and tokens — **no plaintext file anywhere** |
 | `~/.ccp/profiles.json` | metadata (name, base URL, model, email, org). No secrets |
+| `~/.ccp/desktop/<profile>/` | the Claude Desktop login: its already-encrypted token blob + a copy of the app's cookie store |
 | `~/.ccp/backups/<timestamp>/` | copies of the host configs from each switch |
 
 ## Three things to know
@@ -188,7 +293,7 @@ $ ccp usage --all
 | `ccp usage <name>` | one profile, live, falling back to its cached figures |
 | `ccp usage --all` | every first-party login — live for active ones, cached for the rest |
 
-First-party logins only. Claude comes from `api.anthropic.com/api/oauth/usage`, Codex from `chatgpt.com/backend-api/codex/usage` — the same endpoints the official CLIs call, with the same headers they identify themselves with. Third-party providers report `not available`, because none of them expose quota.
+First-party logins only. Claude comes from `api.anthropic.com/api/oauth/usage`, Codex from `chatgpt.com/backend-api/codex/usage` — the same endpoints the official CLIs call, with the same headers they identify themselves with. Third-party providers report `not available`, because none of them expose quota. Antigravity reports `not available` too — for a different reason: it has a quota endpoint, but the request `ccp` would have to send is not worked out yet. Use `ccp mark` there.
 
 For the active profile the token is read from the credential **in use** (keychain / `auth.json`), not from the vault — the vault copy is whatever `capture` last stored and goes stale as tokens refresh.
 
@@ -196,9 +301,9 @@ For the active profile the token is read from the credential **in use** (keychai
 
 A cached window whose reset time has already passed says `window has reset since` rather than showing a countdown that means nothing.
 
-## Running two profiles at once## Running two profiles at once
+## Running two profiles at once
 
-`ccp use` is global (it writes `settings.json`), which also covers Claude Code launched from VSCode or the desktop app. To give one terminal a different profile without changing the global one:
+`ccp use` is global (it writes `settings.json`), which also covers Claude Code launched from VSCode. The Claude Desktop app is a separate login — see [Ứng dụng Claude Desktop](#ứng-dụng-claude-desktop). To give one terminal a different profile without changing the global one:
 
 ```bash
 eval $(ccp env tuongtacfree)
@@ -224,6 +329,10 @@ Click **Cancel**, never "Reset To Defaults". It means `security` could not locat
 **Claude Code shows the wrong account after switching**
 
 That profile has no stored identity. Open Claude Code on the correct account, then `ccp capture <name>`.
+
+**App Claude vẫn dùng account cũ sau khi switch**
+
+App giữ login riêng, không đọc keychain của CLI. Chạy `ccp doctor` để xem app đang ở account nào; nếu profile đích chưa có bản lưu thì đăng nhập app bằng account đó một lần rồi `ccp capture <name>`. Xem [Ứng dụng Claude Desktop](#ứng-dụng-claude-desktop).
 
 **Switched profile but nothing changed**
 
@@ -266,6 +375,9 @@ FAKE_HOME=/tmp/ccp-test node test/2-oauth-switch.mjs  # TOML validity, account s
 FAKE_HOME=/tmp/ccp-test TTF_KEY=sk-... node test/3-check-cli.mjs
 FAKE_HOME=/tmp/ccp-test node test/4-two-accounts.mjs  # two Claude accounts incl. hand login
 FAKE_HOME=/tmp/ccp-test node test/5-two-chatgpt.mjs   # two ChatGPT accounts for Codex
+FAKE_HOME=/tmp/ccp-test node test/8-desktop.mjs       # Claude Desktop login snapshot/restore
+FAKE_HOME=/tmp/ccp-test node test/9-antigravity.mjs   # two Antigravity accounts + the capture guard
+FAKE_HOME=/tmp/ccp-test node test/10-rotate.mjs       # pool rules and the rotate pick
 ```
 
 ## A note on third-party providers

@@ -97,6 +97,20 @@ export function stampNow() {
   return new Date().toISOString().replace(/[:.]/g, '-')
 }
 
+/**
+ * "1d 5h" / "1h 53m" for a duration in ms. Rounded to minutes first, then
+ * split — rounding each unit separately is what produces nonsense like
+ * "167h 60m".
+ */
+export function fmtDuration(ms) {
+  const mins = Math.max(0, Math.round(ms / 60000))
+  const d = Math.floor(mins / 1440)
+  const h = Math.floor((mins % 1440) / 60)
+  const m = mins % 60
+  const parts = d ? [`${d}d`, h && `${h}h`] : h ? [`${h}h`, m && `${m}m`] : [`${m}m`]
+  return parts.filter(Boolean).join(' ')
+}
+
 export function fmtAge(ms) {
   if (!ms) return 'unknown'
   const s = Math.max(0, Math.floor((Date.now() - ms) / 1000))

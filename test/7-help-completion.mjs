@@ -21,7 +21,9 @@ fs.writeFileSync(
       'claude-proxy': { target: 'claude', kind: 'proxy' },
       'codex-login': { target: 'codex', kind: 'chatgpt' },
       'codex-provider': { target: 'codex', kind: 'provider' },
+      'agy-login': { target: 'antigravity', kind: 'google' },
     },
+    pools: { 'claude-pool': { target: 'claude', members: ['claude-login', 'claude-proxy'] } },
   }),
 )
 
@@ -46,13 +48,21 @@ assert.match(completion, /eval "\$\(ccp completion zsh\)"/)
 assert.match(completion, /command ccp __complete profiles/)
 assert.equal((completion.match(/'usage:/g) ?? []).length, 1)
 
+assert.match(commands, /ccp pool <name> <profile\.\.\.>\s+group accounts to rotate between/)
+assert.match(commands, /ccp rotate \[pool\]\s+move a pool onto its best account/)
+
+// `use` takes a profile or a pool; `rotate` only ever takes a pool.
 assert.deepEqual(cli('__complete', 'profiles', 'use').trim().split('\n'), [
+  'agy-login',
   'claude-login',
   'claude-proxy',
   'codex-login',
   'codex-provider',
+  'claude-pool',
 ])
-assert.deepEqual(cli('__complete', 'profiles', 'capture').trim().split('\n'), ['claude-login', 'codex-login'])
+assert.deepEqual(cli('__complete', 'profiles', 'rotate').trim().split('\n'), ['claude-pool'])
+// Antigravity is a login (capture works) but reports no quota yet.
+assert.deepEqual(cli('__complete', 'profiles', 'capture').trim().split('\n'), ['agy-login', 'claude-login', 'codex-login'])
 assert.deepEqual(cli('__complete', 'profiles', 'usage').trim().split('\n'), ['claude-login', 'codex-login'])
 assert.deepEqual(cli('__complete', 'profiles', 'env').trim().split('\n'), ['claude-proxy'])
 

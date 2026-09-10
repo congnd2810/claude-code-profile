@@ -1,6 +1,7 @@
 import { c, fail, fmtAge, info, ok, warn } from './util.mjs'
 import { peekExpiry, vaultRead } from './keychain.mjs'
-import { get } from './store.mjs'
+import { TARGET_LABELS, get } from './store.mjs'
+import * as antigravity from './antigravity.mjs'
 
 const TIMEOUT_MS = 45_000
 
@@ -35,15 +36,16 @@ export async function check(state, name) {
   const p = get(state, name)
   console.log(`\n  ${c.bold(name)} ${c.dim(`(${p.target}/${p.kind})`)}`)
 
-  if (p.kind === 'oauth' || p.kind === 'chatgpt') {
+  if (p.kind === 'oauth' || p.kind === 'chatgpt' || p.kind === 'google') {
     const blob = vaultRead(name)
     if (!blob) return fail('no token in the vault')
-    const exp = peekExpiry(blob)
+    // The Antigravity blob is base64-wrapped, so its expiry has to be read by
+    // the module that knows the format.
+    const exp = p.kind === 'google' ? antigravity.identityOf(blob).expiresAt : peekExpiry(blob)
     if (exp) {
       const left = exp - Date.now()
       if (left <= 0) {
-        const app = p.target === 'claude' ? 'Claude Code' : 'Codex'
-        warn(`access token expired ${fmtAge(exp)} → run \`ccp use ${name}\`, then restart ${app} to refresh it`)
+        warn(`access token expired ${fmtAge(exp)} → run \`ccp use ${name}\`, then restart ${TARGET_LABELS[p.target]} to refresh it`)
         info('sign in again only if the automatic refresh fails')
       } else {
         ok(`access token still valid (${Math.round(left / 3600000)}h left)`)

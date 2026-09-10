@@ -1,7 +1,8 @@
 import path from 'node:path'
 import { HOME, CcpError, backup, info, ok, readJson, warn, writeJsonAtomic } from './util.mjs'
 import { CLAUDE_SERVICE, readSecret, vaultRead, vaultWrite, writeSecret } from './keychain.mjs'
-import { get } from './store.mjs'
+import { get, ownerOf } from './store.mjs'
+import * as desktop from './desktop.mjs'
 
 const SETTINGS = path.join(HOME, '.claude', 'settings.json')
 const CLAUDE_JSON = path.join(HOME, '.claude.json')
@@ -38,6 +39,12 @@ export function liveModel() {
   return readJson(SETTINGS, {}).model ?? null
 }
 
+/** The profile that already holds the login in use, or null. */
+export function ownerOfLive(state) {
+  const uuid = liveIdentity().oauthAccount?.accountUuid
+  return uuid ? ownerOf(state, 'claude', (id) => id.accountUuid === uuid) : null
+}
+
 /**
  * Snapshot the currently-active oauth profile back into the vault.
  *
@@ -51,6 +58,15 @@ export function captureActive(state, { quiet = false } = {}) {
   const p = state.profiles[name]
   if (!p || p.kind !== 'oauth') return false
 
+  // The CLI login and the Claude Desktop login move independently, so each is
+  // captured on its own terms — one being stale or belonging to another
+  // account must not stop the other from being saved.
+  const token = captureToken(name, p, { quiet })
+  const app = desktop.capture(name, p, { quiet })
+  return token || app
+}
+
+function captureToken(name, p, { quiet }) {
   const blob = liveBlob()
   if (!blob) {
     if (!quiet) warn(`could not read the current token — skipping capture for "${name}"`)
@@ -179,6 +195,7 @@ export function captureInto(state, name, { label } = {}) {
     model: liveModel(),
     capturedAt: Date.now(),
   }
+  desktop.capture(name, profile)
   return profile
 }
 
